@@ -1,0 +1,25 @@
+copyright: Copyright (c) Abstract Machines
+repo_url: https://github.com/absmach/propeller-docs.git
+site_description: Propeller Documentation
+site_name: Propeller
+site_url: ""
+edit_uri: ""
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - toc:
+      permalink: "#"
+
+nav:
+  - Overview: index.md
+  - Getting Started: getting-started.md
+  - Architecture: architecture.md
+  - Manager: manager.md
+  - Proplet: proplet.md
+  - Developer's Guide: developer-guide.md
