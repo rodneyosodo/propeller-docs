@@ -1,3 +1,6 @@
+# ⚠️ ARCHIVED / NOT MAINTAINED ⚠️
+All the content from this website has been moved to a new Propeller website and can be found at https://propeller.absmach.eu/docs.
+
 # Propeller Documentation
 
 This repo collects the collaborative work on Propeller documentation.
