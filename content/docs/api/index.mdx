@@ -1,0 +1,27 @@
+---
+title: API Reference
+description: "REST API reference for the Propeller WebAssembly orchestrator. Manage tasks, jobs, proplets, DAG workflows, and federated learning experiments via the Manager REST API."
+---
+
+The Propeller Manager exposes a REST API for managing distributed workloads. Download the [Postman collection](../postman_collection.json) to explore the API interactively.
+
+## Core APIs
+
+- **[Health](/api/health/get)** - Health check endpoint
+- **[Metrics](/api/metrics/get)** - Prometheus metrics endpoint
+- **[Proplets](/api/proplets/get)** - Manage proplet workers
+- **[Tasks](/api/tasks/get)** - Create and manage tasks
+- **[Jobs](/api/jobs/get)** - Manage task execution jobs
+- **[Workflows](/api/workflows/post)** - Deploy multi-task workflows (DAGs)
+
+## Federated Learning
+
+The FL API enables federated machine learning across distributed proplets. See [Federated Learning](/fml/federated-learning) for architecture and usage details.
+
+| Endpoint                                                                                     | Description                            |
+| -------------------------------------------------------------------------------------------- | -------------------------------------- |
+| [POST /fl/experiments](/api/federated-ml/experiments/post)                              | Configure and start an FL experiment   |
+| [GET /fl/task](/api/federated-ml/task/get)                                              | Get FL task details for a proplet      |
+| [POST /fl/update](/api/federated-ml/update/post)                                        | Submit training updates (JSON)         |
+| [POST /fl/update_cbor](/api/federated-ml/update_cbor/post)                              | Submit training updates (CBOR)         |
+| [GET /fl/rounds/\{round_id\}/complete](/api/federated-ml/rounds/round_id/complete/get)  | Check round completion status          |

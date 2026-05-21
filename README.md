@@ -1,50 +1,66 @@
-# ⚠️ ARCHIVED / NOT MAINTAINED ⚠️
-All the content from this website has been moved to a new Propeller website and can be found at https://propeller.absmach.eu/docs.
+# Propeller Docs
 
-# Propeller Documentation
+Documentation site for [Propeller](https://github.com/absmach/propeller), built with [Fumadocs](https://fumadocs.dev) and Next.js.
 
-This repo collects the collaborative work on Propeller documentation.
+The site is served under `/docs/propeller` — visiting `/` renders the intro page.
 
-Documentation is auto-generated from Markdown files in this repo.
-
-[MkDocs](https://www.mkdocs.org/) is used to serve the docs locally with different theming.
-
-## Install
-
-Doc repo can be fetched from GitHub:
+## Development
 
 ```bash
-git clone https://github.com/absmach/propeller-docs.git
+pnpm install
+pnpm dev
 ```
 
-## Prerequisites
+Open http://localhost:3000 with your browser to see the result.
 
-[Python](https://www.python.org/downloads/) 3.7 or higher is required to run MkDocs.
+## Deployment
 
-1. Create a virtual environment:
+This site uses:
 
-   ```bash
-   python -m venv venv
-   ```
+- **Next.js static export** — `next build` outputs static files to `out/`
+- **GitHub Pages** — serves the `out/` directory via GitHub Actions
 
-2. Activate the virtual environment:
+### GitHub Actions (`.github/workflows/cd.yaml`)
 
-   ```bash
-   source venv/bin/activate
-   ```
+Triggers on push to `main`. The workflow:
 
-3. Install [MkDocs](https://www.mkdocs.org/#installation) and dependencies:
+1. Builds the static site with `pnpm run build`
+2. Uploads `out/` as a Pages artifact
+3. Deploys to GitHub Pages
+4. Submits updated URLs to IndexNow
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Architecture
 
-## Usage
+```mermaid
+flowchart LR
+  subgraph Build_and_Deploy
+    A[Git push to main] --> B[GitHub Actions trigger]
+    B --> C[pnpm run build]
+    C --> D[next build — static export]
+    D --> E[out/ static assets]
+    E --> F[GitHub Pages]
+  end
 
-Use MkDocs to serve documentation:
-
-```bash
-mkdocs serve
+  subgraph Runtime_Request_Flow
+    U[Browser request] --> F
+    F --> U
+  end
 ```
 
-Then just point the browser to [http://127.0.0.1:8000](http://127.0.0.1:8000).
+## Project structure
+
+| Path                               | Description                              |
+|------------------------------------|------------------------------------------|
+| `src/app/[[...slug]]/page.tsx`     | Docs page renderer (all routes)          |
+| `src/app/api/search/route.ts`      | Static search index route handler        |
+| `src/app/og/[...slug]/route.tsx`   | OG image generation for docs pages       |
+| `src/app/llms-full.txt/route.ts`   | LLM-readable full docs text              |
+| `content/docs`                     | MDX source files                         |
+| `src/lib/source.ts`                | Fumadocs source adapter                  |
+| `src/lib/layout.shared.tsx`        | Shared layout options                    |
+| `content/openapi.yaml`             | OpenAPI spec (generates API docs)        |
+
+## Learn More
+
+- [Fumadocs](https://fumadocs.dev)
+- [Next.js Documentation](https://nextjs.org/docs)
