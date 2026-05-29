@@ -2,7 +2,7 @@
 
 Documentation site for [Propeller](https://github.com/absmach/propeller), built with [Fumadocs](https://fumadocs.dev) and Next.js.
 
-The site is served under `/docs/propeller` — visiting `/` renders the intro page.
+Visiting `/docs/propeller/` redirects to `/docs/propeller/architecture/`.
 
 ## Development
 
@@ -11,41 +11,55 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:3000 with your browser to see the result.
+Open http://localhost:3000/docs/propeller/ with your browser to see the result.
 
 ## Deployment
 
 This site uses:
 
 - **Next.js static export** — `next build` outputs static files to `out/`
-- **GitHub Pages** — serves the `out/` directory via GitHub Actions
+- **Next.js `basePath`** — generates links and assets under `/docs/propeller`
+- **Post-build nesting** — `scripts/nest-static-export.mjs` moves the export under `out/docs/propeller/` so Cloudflare static assets can serve it from the route prefix without custom Worker code
 
-### GitHub Actions (`.github/workflows/cd.yaml`)
+### Cloudflare build settings (Dashboard)
 
-Triggers on push to `main`. The workflow:
-
-1. Builds the static site with `pnpm run build`
-2. Uploads `out/` as a Pages artifact
-3. Deploys to GitHub Pages
-4. Submits updated URLs to IndexNow
+| Setting          | Value                         |
+|------------------|-------------------------------|
+| Build command    | `pnpm run build`              |
+| Deploy command   | `npx wrangler deploy`         |
+| Version command  | `npx wrangler versions upload` |
+| Root directory   | `/`                           |
 
 ### Architecture
 
 ```mermaid
 flowchart LR
   subgraph Build_and_Deploy
-    A[Git push to main] --> B[GitHub Actions trigger]
+    A[Git push] --> B[Cloudflare build trigger]
     B --> C[pnpm run build]
     C --> D[next build — static export]
-    D --> E[out/ static assets]
-    E --> F[GitHub Pages]
+    D --> E[nest export under out/docs/propeller]
+    B --> F[npx wrangler deploy]
+    E --> G[Cloudflare static assets]
+    F --> G
   end
 
   subgraph Runtime_Request_Flow
-    U[Browser request] --> F
-    F --> U
+    U[Browser request] --> H[Cloudflare static asset route]
+    H --> J[Static asset lookup]
+    J --> U
   end
 ```
+
+## Environment Variables
+
+Only one build variable is needed:
+
+```env
+NEXT_PUBLIC_BASE_URL=https://www.absmach.eu/docs/propeller
+```
+
+Set this as a Cloudflare build variable so it is embedded into the static output at build time.
 
 ## Project structure
 
@@ -59,6 +73,7 @@ flowchart LR
 | `src/lib/source.ts`                | Fumadocs source adapter                  |
 | `src/lib/layout.shared.tsx`        | Shared layout options                    |
 | `content/openapi.yaml`             | OpenAPI spec (generates API docs)        |
+| `scripts/nest-static-export.mjs`   | Moves static export under `/docs/propeller` |
 
 ## Learn More
 
