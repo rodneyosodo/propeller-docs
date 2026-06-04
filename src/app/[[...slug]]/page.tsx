@@ -98,7 +98,7 @@ export default async function Page(props: PageProps<"/[[...slug]]">) {
         <LLMCopyButton markdownUrl={`${page.url}.mdx`} />
         <ViewOptions
           markdownUrl={`${page.url}.mdx`}
-          githubUrl={`https://github.com/absmach/propeller/blob/main/content/docs/${page.path}`}
+          githubUrl={`https://github.com/absmach/propeller-docs/blob/main/content/docs/${page.path}`}
         />
       </div>
 

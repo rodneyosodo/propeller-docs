@@ -18,10 +18,10 @@ The Propeller Manager exposes a REST API for managing distributed workloads. Dow
 
 The FL API enables federated machine learning across distributed proplets. See [Federated Learning](/fml/federated-learning) for architecture and usage details.
 
-| Endpoint                                                                                     | Description                            |
-| -------------------------------------------------------------------------------------------- | -------------------------------------- |
-| [POST /fl/experiments](/api/federated-ml/experiments/post)                              | Configure and start an FL experiment   |
-| [GET /fl/task](/api/federated-ml/task/get)                                              | Get FL task details for a proplet      |
-| [POST /fl/update](/api/federated-ml/update/post)                                        | Submit training updates (JSON)         |
-| [POST /fl/update_cbor](/api/federated-ml/update_cbor/post)                              | Submit training updates (CBOR)         |
-| [GET /fl/rounds/\{round_id\}/complete](/api/federated-ml/rounds/round_id/complete/get)  | Check round completion status          |
+| Endpoint                                                                               | Description                          |
+| -------------------------------------------------------------------------------------- | ------------------------------------ |
+| [POST /fl/experiments](/api/federated-ml/experiments/post)                             | Configure and start an FL experiment |
+| [GET /fl/task](/api/federated-ml/task/get)                                             | Get FL task details for a proplet    |
+| [POST /fl/update](/api/federated-ml/update/post)                                       | Submit training updates (JSON)       |
+| [POST /fl/update_cbor](/api/federated-ml/update_cbor/post)                             | Submit training updates (CBOR)       |
+| [GET /fl/rounds/\{round_id\}/complete](/api/federated-ml/rounds/round_id/complete/get) | Check round completion status        |

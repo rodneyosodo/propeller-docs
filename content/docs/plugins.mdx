@@ -1,0 +1,140 @@
+---
+title: Plugins
+description: "Extend Propeller with WebAssembly plugins. Write authorization, enrichment, and lifecycle hooks in Rust that run safely inside the manager and proplet without recompilation."
+---
+
+Plugins let you extend Propeller's behaviour at runtime without modifying or recompiling the core binaries. Each plugin is a `.wasm` file dropped into a directory that the [Manager](/docs/manager) or [Proplet](/docs/proplet) watches at startup.
+
+Two independent plugin systems exist:
+
+- **Manager plugins** — intercept task operations (create, start, stop, delete, dispatch) before they reach the scheduler. Written with [`propeller-plugin-sdk`](https://github.com/absmach/propeller/tree/main/crates/propeller-plugin-sdk).
+- **Proplet plugins** — intercept tasks on the edge node just before execution. Written with [`propeller-proplet-plugin-sdk`](https://github.com/absmach/propeller/tree/main/crates/propeller-proplet-plugin-sdk).
+
+Both run inside a sandboxed Wasmtime instance with WASI, so plugin code cannot access the host filesystem, network, or process table beyond what WASI allows.
+
+## Manager plugins
+
+Manager plugins run inside the manager process and wrap every task operation. For background on how the manager processes tasks, see the [Manager](/docs/manager) documentation.
+
+### Hooks
+
+| Hook                       | When it runs                                    | What it can do                                               |
+| -------------------------- | ----------------------------------------------- | ------------------------------------------------------------ |
+| `authorize`                | Before every mutating operation                 | Allow or deny the request with a reason                      |
+| `enrich_task`              | After `authorize` on create/workflow/job        | Inject env vars, override image URL, set priority, add inputs |
+| `on_before_proplet_select` | Before the scheduler picks a proplet            | Require specific tags or minimum memory                      |
+| `on_before_dispatch`       | After proplet is selected, before MQTT dispatch | Allow/deny dispatch, inject extra env vars                   |
+| `on_task_start`            | After `StartTask` succeeds                      | Side-effects only (notifications, audit log)                 |
+| `on_task_complete`         | When a task finishes on a proplet               | Side-effects only                                            |
+
+All hooks receive an `AuthContext` containing the `user_id` and `action` string (`create`, `start`, `stop`, `delete`, `update`).
+
+### Write a manager plugin
+
+Add `propeller-plugin-sdk` to your `Cargo.toml`. Implement the `Plugin` trait and call `register_plugin!`. All trait methods have default no-op / allow-all implementations—only override what you need.
+
+#### Source Code
+
+The source code is available in the [examples/plugin-auth](https://github.com/absmach/propeller/tree/main/examples/plugin-auth) directory.
+
+<CodeFromSource
+  src="https://raw.githubusercontent.com/absmach/propeller/refs/heads/main/examples/plugin-auth/Cargo.toml"
+  lang="toml"
+/>
+
+<CodeFromSource
+  src="https://raw.githubusercontent.com/absmach/propeller/refs/heads/main/examples/plugin-auth/src/lib.rs"
+  lang="rust"
+/>
+
+### Build and deploy a manager plugin
+
+```bash
+cargo build --release --target wasm32-wasip1
+cp target/wasm32-wasip1/release/my_plugin.wasm /etc/propeller/plugins/
+```
+
+Point the manager at the directory:
+
+```bash
+MANAGER_PLUGIN_DIR=/etc/propeller/plugins ./manager
+```
+
+The manager scans the directory at startup and loads every `.wasm` file it finds. Plugins are called in the order they were loaded; if any plugin denies a request, the chain stops and the operation is rejected.
+
+### Auth plugin example
+
+The `examples/plugin-auth` example enforces:
+
+- Task name must not be empty.
+- `user_id` is required for `create` and `start` actions.
+- Only the user who created a task (stored in `PROPELLER_CREATED_BY` env) can start it.
+
+It also enriches every created task with a `PROPELLER_CREATED_BY` env var so the ownership check works on subsequent calls.
+
+### Proxy / registry mirror example
+
+The `examples/plugin-proxy` example rewrites every task's `image_url` to point at a private registry mirror. The mirror URL is baked in at build time via the `PROPELLER_REGISTRY_MIRROR` environment variable:
+
+```bash
+PROPELLER_REGISTRY_MIRROR=mirror.corp.com \
+  cargo build --release --target wasm32-wasip1
+```
+
+## Proplet plugins
+
+Proplet plugins run on the edge node itself, before a task is handed to the Wasm runtime. They use the WIT component model and are loaded with [`propeller-proplet-plugin-sdk`](https://github.com/absmach/propeller/tree/main/crates/propeller-proplet-plugin-sdk). For background on how the proplet executes tasks, see the [Proplet](/docs/proplet) documentation.
+
+### Hooks
+
+| Hook               | When it runs                 | What it can do              |
+| ------------------ | ---------------------------- | --------------------------- |
+| `authorize`        | Before the task is executed  | Allow or deny with a reason |
+| `enrich`           | After `authorize`            | Inject additional env vars  |
+| `on_task_start`    | Just before execution begins | Side-effects only           |
+| `on_task_complete` | After the task exits         | Side-effects only           |
+
+### Write a proplet plugin
+
+Plugin stdout and stderr are captured and forwarded to the proplet's structured logger under the plugin's name.
+
+#### Source Code
+
+The source code is available in the [examples/proplet-plugin-example](https://github.com/absmach/propeller/tree/main/examples/proplet-plugin-example) directory.
+
+<CodeFromSource
+  src="https://raw.githubusercontent.com/absmach/propeller/refs/heads/main/examples/proplet-plugin-example/Cargo.toml"
+  lang="toml"
+/>
+
+<CodeFromSource
+  src="https://raw.githubusercontent.com/absmach/propeller/refs/heads/main/examples/proplet-plugin-example/src/lib.rs"
+  lang="rust"
+/>
+
+### Build and deploy a proplet plugin
+
+```bash
+cargo build --release --target wasm32-wasip1
+cp target/wasm32-wasip1/release/my_proplet_plugin.wasm /etc/propeller/proplet-plugins/
+```
+
+Set the proplet plugin directory:
+
+```bash
+PROPLET_PLUGIN_DIR=/etc/propeller/proplet-plugins ./proplet
+```
+
+## Understand how plugins are loaded
+
+Both the manager and proplet scan the plugin directory at startup:
+
+1. If `*_PLUGIN_DIR` is unset or empty, the registry is empty and all operations proceed as normal.
+2. If the directory does not exist, a warning is logged and startup continues without plugins.
+3. Every `.wasm` file in the directory is compiled and instantiated via Wasmtime.
+4. A plugin missing the required `plugin_alloc` / `plugin_free` exports fails to load and is skipped with an error log.
+5. A plugin missing the `authorize` export is loaded but logs a warning—all requests will be permitted by that plugin.
+
+## Handle system-initiated actions
+
+When the manager's cron scheduler or workflow coordinator triggers a task internally, the `AuthContext` carries `user_id = "system"`. Plugins can check `req.context.user_id == "system"` in their `authorize` implementation to detect this and bypass user-specific checks.

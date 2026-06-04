@@ -79,9 +79,9 @@ Your output should look like this:
 {
   "job_id": "job-abc123",
   "tasks": [
-    {"id": "task-001", "name": "extract", "state": 0},
-    {"id": "task-002", "name": "transform", "state": 0},
-    {"id": "task-003", "name": "load", "state": 0}
+    { "id": "task-001", "name": "extract", "state": 0 },
+    { "id": "task-002", "name": "transform", "state": 0 },
+    { "id": "task-003", "name": "load", "state": 0 }
   ]
 }
 ```
@@ -200,6 +200,7 @@ Workflows execute tasks based on dependency relationships and conditional logic.
 ![DAG Run-If Success/Failure Branching](./images/dag/run-if-success-failure-branching.svg)
 
 **Execution flow:**
+
 1. **Payment Task** executes first
 2. Based on outcome, one of two paths runs:
    - **On success**: Send Confirmation task runs (`run_if: success`)
@@ -214,6 +215,7 @@ The following diagram shows how `depends_on` chains tasks together:
 ![Task Dependencies](./images/dag/dependency.svg)
 
 **Execution flow:**
+
 - **Task A** has no dependencies and runs first
 - **Task B** depends on Task A (`depends_on: ["task-a"]`)
 - **Task C** depends on both Task A and Task B (`depends_on: ["task-a", "task-b"]`)
@@ -232,6 +234,7 @@ A single parent task triggers multiple child tasks. All children start simultane
 ![Fan-Out and Fan-In](./images/dag/fanout-fanin.svg)
 
 **Example (image processing pipeline):**
+
 - **Ingest** task runs first—loads the source image
 - Ingest triggers three parallel tasks: **Resize**, **Watermark**, **Compress**
 - All three run simultaneously since they have no dependencies on each other
@@ -241,6 +244,7 @@ A single parent task triggers multiple child tasks. All children start simultane
 Multiple tasks converge into a single downstream task. The downstream task waits for **all** upstream tasks to complete. This pattern is used for aggregation, merging results, or synchronization points.
 
 **Example (image processing pipeline):**
+
 - **Merge & Upload** depends on Resize, Watermark, and Compress
 - It waits for all three to complete before starting
 - Combines results and uploads the final processed image
@@ -306,11 +310,42 @@ Your output should look like this:
 ```json
 {
   "tasks": [
-    {"id": "fetch-a", "name": "fetch-source-a", "workflow_id": "...", "state": 0},
-    {"id": "fetch-b", "name": "fetch-source-b", "workflow_id": "...", "state": 0},
-    {"id": "merge", "name": "merge-data", "workflow_id": "...", "depends_on": ["fetch-a", "fetch-b"], "run_if": "success", "state": 0},
-    {"id": "report", "name": "generate-report", "workflow_id": "...", "depends_on": ["merge"], "run_if": "success", "state": 0},
-    {"id": "alert", "name": "send-alert", "workflow_id": "...", "depends_on": ["merge"], "run_if": "failure", "state": 0}
+    {
+      "id": "fetch-a",
+      "name": "fetch-source-a",
+      "workflow_id": "...",
+      "state": 0
+    },
+    {
+      "id": "fetch-b",
+      "name": "fetch-source-b",
+      "workflow_id": "...",
+      "state": 0
+    },
+    {
+      "id": "merge",
+      "name": "merge-data",
+      "workflow_id": "...",
+      "depends_on": ["fetch-a", "fetch-b"],
+      "run_if": "success",
+      "state": 0
+    },
+    {
+      "id": "report",
+      "name": "generate-report",
+      "workflow_id": "...",
+      "depends_on": ["merge"],
+      "run_if": "success",
+      "state": 0
+    },
+    {
+      "id": "alert",
+      "name": "send-alert",
+      "workflow_id": "...",
+      "depends_on": ["merge"],
+      "run_if": "failure",
+      "state": 0
+    }
   ]
 }
 ```
@@ -333,6 +368,7 @@ Your output should look like this:
 | `workflow_id` | string (auto)   | ID of the workflow this task belongs to                                                                                          |
 
 The `depends_on` field references task IDs that must complete before this task runs. The manager validates:
+
 - All referenced task IDs exist in the workflow
 - No circular dependencies exist (DAG validation)
 
@@ -364,6 +400,7 @@ Propeller passes task results through the workflow coordinator. Each task receiv
 ![Data Passing Between Tasks](./images/dag/data-passing-between-tasks.svg)
 
 **Diagram explanation:**
+
 - **Task A** produces results and completes
 - **Task B** receives Task A's results, processes them, and produces its own results
 - **Task C** receives results from **both** Task A and Task B
@@ -379,6 +416,7 @@ Conditional execution lets you build workflows that respond to task outcomes. Co
 ![Conditional Branching](./images/dag/conditional-branching.svg)
 
 **Diagram explanation:**
+
 - **Parent Task** completes with either success or failure
 - **Child Task (run_if: success)** executes only when all parents succeeded
 - **Child Task (run_if: failure)** executes only when at least one parent failed
@@ -399,6 +437,7 @@ curl -X POST "http://localhost:7070/tasks/{root_task_id}/start"
 ```
 
 The workflow coordinator will:
+
 1. Identify tasks with no dependencies (roots) — these are started manually
 2. Monitor root task completion
 3. Start dependent tasks when their prerequisites are satisfied
@@ -408,12 +447,12 @@ For a complete working example with real WASM modules and actual API responses, 
 
 ## Workflow vs Job Comparison
 
-| Aspect              | Workflow                                                                        | Job                                                             |
-| ------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **Endpoint**        | [`POST /workflows`](/api/workflows/post)                                   | [`POST /jobs`](/api/jobs/post)                             |
-| **Execution order** | Defined by `depends_on` arrays                                                  | Controlled by `execution_mode`                                  |
-| **Dependencies**    | Explicit task-to-task                                                           | None—mode determines order                                      |
-| **Use case**        | Complex DAGs with fan-out/fan-in                                                | Simple parallel or sequential batches                           |
+| Aspect              | Workflow                                                                   | Job                                                        |
+| ------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Endpoint**        | [`POST /workflows`](/docs/api/workflows/post)                              | [`POST /jobs`](/docs/api/jobs/post)                        |
+| **Execution order** | Defined by `depends_on` arrays                                             | Controlled by `execution_mode`                             |
+| **Dependencies**    | Explicit task-to-task                                                      | None—mode determines order                                 |
+| **Use case**        | Complex DAGs with fan-out/fan-in                                           | Simple parallel or sequential batches                      |
 | **Start command**   | [`POST /tasks/{task_id}/start`](/api/tasks/task_id/start/post) (root task) | [`POST /jobs/{job_id}/start`](/api/jobs/job_id/start/post) |
 
 ## DAG Validation
@@ -425,6 +464,7 @@ The workflow coordinator validates DAG structure before execution:
 A **circular dependency** occurs when tasks form a loop—Task A depends on Task B, which depends on Task C, which depends back on Task A. This creates an impossible execution order where no task can start because each is waiting for another.
 
 Circular dependencies are not allowed because:
+
 - **Deadlock**: Tasks wait forever since their prerequisites never complete
 - **Invalid DAG**: A graph with cycles is not acyclic, violating the DAG definition
 - **Unpredictable behavior**: The workflow has no valid starting point
@@ -434,14 +474,15 @@ The coordinator detects and rejects circular dependencies:
 ```json
 {
   "tasks": [
-    {"name": "task-a", "depends_on": ["task-c"]},
-    {"name": "task-b", "depends_on": ["task-a"]},
-    {"name": "task-c", "depends_on": ["task-b"]}
+    { "name": "task-a", "depends_on": ["task-c"] },
+    { "name": "task-b", "depends_on": ["task-a"] },
+    { "name": "task-c", "depends_on": ["task-b"] }
   ]
 }
 ```
 
 Error response:
+
 ```json
 {
   "error": "DAG validation failed: circular dependency detected: cycle detected involving tasks task-a and task-b"
@@ -454,13 +495,12 @@ All referenced task IDs must exist:
 
 ```json
 {
-  "tasks": [
-    {"name": "process", "depends_on": ["nonexistent-task"]}
-  ]
+  "tasks": [{ "name": "process", "depends_on": ["nonexistent-task"] }]
 }
 ```
 
 Error response:
+
 ```json
 {
   "error": "dependency validation failed: dependency task not found: task process depends on nonexistent-task which does not exist"
@@ -617,6 +657,7 @@ curl http://localhost:7070/tasks/task-abc123 | jq '{next_run, is_recurring}'
 ```
 
 Response:
+
 ```json
 {
   "next_run": "2026-02-27T11:00:00Z",
@@ -635,7 +676,7 @@ curl -X POST "http://localhost:7070/tasks/task-abc123/stop"
 Your output should look like this:
 
 ```json
-{"stopped": true}
+{ "stopped": true }
 ```
 
 The response indicates the task was successfully stopped. The task's `state` changes to `6` (Interrupted).
@@ -662,6 +703,7 @@ Your output should look like this:
 ```
 
 The response returns the full updated task. Key changes:
+
 - **is_recurring**: Now `false`—the task won't run on schedule
 - **updated_at**: Reflects when the change was applied
 - **schedule**: Retained for reference, but won't trigger execution
@@ -701,6 +743,7 @@ curl "http://localhost:7070/tasks?metadata[env]=production&metadata[team]=data-e
 Multiple filters are combined with AND semantics—a task must match every supplied filter to appear in the results.
 
 **Metadata key rules:**
+
 - Allowed characters: alphanumerics, `.`, `_`, `-`
 - Keys with other characters are rejected with a `400` error
 
@@ -745,6 +788,7 @@ A task enters the `Interrupted` state (`6`) when it's stopped before natural com
 - **System shutdown**: Proplet disconnection during execution
 
 Interrupted tasks:
+
 - Don't trigger downstream dependencies in workflows
 - Can be restarted with `POST /tasks/{id}/start`
 - Retain their configuration for debugging or retry
@@ -793,8 +837,9 @@ Your output should look like this:
 ```
 
 Daemon tasks:
+
 - Run until explicitly stopped
 - Automatically restart on the same proplet if they crash
 - Don't count toward workflow completion
 
-For complete working examples including ETL pipelines and troubleshooting guides, see [DAG Workflows and Jobs](/examples/dag).
+For complete working examples including ETL pipelines and troubleshooting guides, see [DAG Workflows and Jobs](/docs/examples/dag).
