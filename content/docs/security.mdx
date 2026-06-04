@@ -1,0 +1,276 @@
+---
+title: Security
+description: Propeller's security features
+---
+
+## MQTT connection modes
+
+Propeller services (Manager, Proplet, Proxy) communicate with Magistrala's MQTT broker through an **nginx** proxy. Three modes are available:
+
+| Mode  | Port | Auth method                           | Encryption        | Client cert required |
+| ----- | ---- | ------------------------------------- | ----------------- | -------------------- |
+| MQTT  | 1883 | username/password                     | None              | No                   |
+| MQTTS | 8883 | username/password                     | TLS (server cert) | No                   |
+| mTLS  | 8883 | X.509 client cert + username/password | TLS (mutual)      | Yes (AUTH=x509)      |
+
+- **MQTT** — plain TCP. The MQTT username and password authenticate the client against the Magistrala client registry.
+- **MQTTS** — TLS with server-side certificate only. Traffic is encrypted and the client verifies the server's identity via the CA certificate. The client still authenticates with MQTT username/password. Set `AUTH=key` or omit `AUTH`.
+- **mTLS** — mutual TLS. Both server and client present certificates during the TLS handshake. Nginx enforces client certificate verification (`ssl_verify_client on`) and validates that the MQTT password matches the certificate's CN via the JS auth module. Set `AUTH=x509`.
+
+## Certificate generation
+
+Run these commands in `docker/ssl/`:
+
+```bash
+cd docker/ssl
+
+# 1. Certificate Authority
+make ca O="Propeller" OU_CA="propeller_ca" EA="propeller@absmach.eu"
+
+# 2. Server certificate (for nginx)
+make server_cert CN="localhost" O="Propeller" OU_CRT="propeller_crt" EA="propeller@absmach.eu"
+
+# 3. Client certificates (one per service, only needed for mTLS)
+make client_cert CLIENT_SECRET="<client_secret>" CRT_FILE_NAME="manager" \
+  O="Propeller" OU_CA="propeller_ca" EA="propeller@absmach.eu"
+make client_cert CLIENT_SECRET="<client_secret>" CRT_FILE_NAME="proplet" \
+  O="Propeller" OU_CA="propeller_ca" EA="propeller@absmach.eu"
+make client_cert CLIENT_SECRET="<client_secret>" CRT_FILE_NAME="proxy" \
+  O="Propeller" OU_CA="propeller_ca" EA="propeller@absmach.eu"
+```
+
+The `CRT_FILE_NAME` determines the output: `certs/<name>.crt` and `certs/<name>.key`. Each service needs a unique client secret (UUID) — this is the client identity in Magistrala and must match what you set in `*_CLIENT_KEY` in `.env`.
+
+Default values:
+
+```txt
+CRT_LOCATION = certs
+O ?= Propeller
+OU_CA ?= propeller_ca
+OU_CRT ?= propeller_crt
+EA ?= propeller@absmach.eu
+CN_CA ?= Propeller_Self_Signed_CA
+CN_SRV ?= localhost
+CLIENT_SECRET ?= ""
+CRT_FILE_NAME ?= proplet
+```
+
+Quick-start example (self-signed, development only):
+
+```bash
+cd docker/ssl
+make ca
+make server_cert
+make client_cert CLIENT_SECRET=4c871ca5-b365-4f6e-a705-bb1f695bc37a
+make client_cert CLIENT_SECRET=db7468c3-89dd-432c-a1bc-fde48683fad6 CRT_FILE_NAME=manager
+make client_cert CLIENT_SECRET=ded0fe23-129f-4360-bd2b-e169f8475884 CRT_FILE_NAME=proxy
+```
+
+## Configure Propeller
+
+### 1. Set environment variables
+
+In `docker/.env`, configure the MQTT address and cert paths for your chosen mode.
+
+**MQTTS** (TLS, server cert only — set CA cert, leave client cert/key empty):
+
+```env
+# Manager
+MANAGER_MQTT_ADDRESS="ssl://nginx:8883"
+MANAGER_MQTT_TLS_CA_CERT=/etc/propeller/tls/ca.crt
+# MANAGER_MQTT_TLS_CLIENT_CERT=
+# MANAGER_MQTT_TLS_CLIENT_KEY=
+
+# Proplet
+PROPLET_MQTT_ADDRESS="ssl://nginx:8883"
+PROPLET_MQTT_TLS_CA_CERT=/etc/propeller/tls/ca.crt
+# PROPLET_MQTT_TLS_CLIENT_CERT=
+# PROPLET_MQTT_TLS_CLIENT_KEY=
+
+# Proxy
+PROXY_MQTT_ADDRESS="ssl://nginx:8883"
+PROXY_MQTT_TLS_CA_CERT=/etc/propeller/tls/ca.crt
+# PROXY_MQTT_TLS_CLIENT_CERT=
+# PROXY_MQTT_TLS_CLIENT_KEY=
+```
+
+To enable MQTT over TLS, set `MANAGER_MQTT_ADDRESS` to `ssl://nginx:8883` and mount the CA cert (see volumes section below). Run the following command to start the manager with MQTT over TLS:
+
+```bash
+AUTH=key make start-magistrala
+```
+
+**mTLS** (mutual TLS — set all three cert paths):
+
+```env
+# Manager
+MANAGER_MQTT_ADDRESS="ssl://nginx:8883"
+MANAGER_MQTT_TLS_CA_CERT=/etc/propeller/tls/ca.crt
+MANAGER_MQTT_TLS_CLIENT_CERT=/etc/propeller/tls/client.crt
+MANAGER_MQTT_TLS_CLIENT_KEY=/etc/propeller/tls/client.key
+
+# Proplet
+PROPLET_MQTT_ADDRESS="ssl://nginx:8883"
+PROPLET_MQTT_TLS_CA_CERT=/etc/propeller/tls/ca.crt
+PROPLET_MQTT_TLS_CLIENT_CERT=/etc/propeller/tls/client.crt
+PROPLET_MQTT_TLS_CLIENT_KEY=/etc/propeller/tls/client.key
+
+# Proxy
+PROXY_MQTT_ADDRESS="ssl://nginx:8883"
+PROXY_MQTT_TLS_CA_CERT=/etc/propeller/tls/ca.crt
+PROXY_MQTT_TLS_CLIENT_CERT=/etc/propeller/tls/client.crt
+PROXY_MQTT_TLS_CLIENT_KEY=/etc/propeller/tls/client.key
+```
+
+When using mTLS (`AUTH=x509`), nginx requires a client certificate on port 8883. The `*_CLIENT_KEY` env var must match the UUID used as `CLIENT_SECRET` when generating the client certificate — the JS auth module validates that the MQTT password ends with the certificate's Common Name.
+
+```bash
+AUTH=x509 make start-magistrala
+make start-propeller
+```
+
+### 2. Add volume mounts
+
+In `docker/compose.propeller.yaml`, add certificate bind mounts for each service:
+
+```yaml
+services:
+  manager:
+    volumes:
+      - ./config.toml:/config.toml # existing
+      - type: bind
+        source: ./ssl/certs/ca.crt
+        target: /etc/propeller/tls/ca.crt
+        read_only: true
+      - type: bind
+        source: ./ssl/certs/manager.crt
+        target: /etc/propeller/tls/client.crt
+        read_only: true
+      - type: bind
+        source: ./ssl/certs/manager.key
+        target: /etc/propeller/tls/client.key
+        read_only: true
+
+  proplet:
+    volumes:
+      - ./config.toml:/home/proplet/config.toml
+      - type: bind
+        source: ./ssl/certs/ca.crt
+        target: /etc/propeller/tls/ca.crt
+        read_only: true
+      - type: bind
+        source: ./ssl/certs/proplet.crt
+        target: /etc/propeller/tls/client.crt
+        read_only: true
+      - type: bind
+        source: ./ssl/certs/proplet.key
+        target: /etc/propeller/tls/client.key
+        read_only: true
+
+  proxy:
+    volumes:
+      - ./config.toml:/home/proxy/config.toml # existing
+      - type: bind
+        source: ./ssl/certs/ca.crt
+        target: /etc/propeller/tls/ca.crt
+        read_only: true
+      - type: bind
+        source: ./ssl/certs/proxy.crt
+        target: /etc/propeller/tls/client.crt
+        read_only: true
+      - type: bind
+        source: ./ssl/certs/proxy.key
+        target: /etc/propeller/tls/client.key
+        read_only: true
+```
+
+The client cert and key mounts (`manager.crt`, `proplet.crt`, `proxy.crt`, etc.) are only required for mTLS. The CA cert mount is required for both MQTTS and mTLS.
+
+### 3. Uncomment env passthrough in compose
+
+In `docker/compose.propeller.yaml`, uncomment the TLS env passthrough lines for each service:
+
+```yaml
+# (uncomment these under manager.environment)
+MANAGER_MQTT_TLS_CA_CERT: ${MANAGER_MQTT_TLS_CA_CERT}
+MANAGER_MQTT_TLS_CLIENT_CERT: ${MANAGER_MQTT_TLS_CLIENT_CERT}
+MANAGER_MQTT_TLS_CLIENT_KEY: ${MANAGER_MQTT_TLS_CLIENT_KEY}
+
+# (uncomment these under proplet.environment)
+PROPLET_MQTT_TLS_CA_CERT: ${PROPLET_MQTT_TLS_CA_CERT}
+PROPLET_MQTT_TLS_CLIENT_CERT: ${PROPLET_MQTT_TLS_CLIENT_CERT}
+PROPLET_MQTT_TLS_CLIENT_KEY: ${PROPLET_MQTT_TLS_CLIENT_KEY}
+
+# (uncomment these under proxy.environment)
+PROXY_MQTT_TLS_CA_CERT: ${PROXY_MQTT_TLS_CA_CERT}
+PROXY_MQTT_TLS_CLIENT_CERT: ${PROXY_MQTT_TLS_CLIENT_CERT}
+PROXY_MQTT_TLS_CLIENT_KEY: ${PROXY_MQTT_TLS_CLIENT_KEY}
+```
+
+## Start
+
+Start Magistrala with the desired auth mode, then Propeller:
+
+```bash
+# For mTLS:
+AUTH=x509 make start-magistrala
+
+# For MQTTS (server TLS only):
+AUTH=key make start-magistrala
+
+make start-propeller
+```
+
+## Authentication modes
+
+### Plain MQTT (no TLS)
+
+Services connect to `tcp://nginx:1883` without encryption. Each service authenticates with MQTT username/password where username equals `*_CLIENT_ID` and password equals `*_CLIENT_KEY`. Works with any `AUTH` setting.
+
+### MQTTS (TLS, server-only)
+
+Services connect to `ssl://nginx:8883` with TLS. The client verifies the server's certificate using the CA certificate (`ca.crt`). Traffic is encrypted but no client certificate is exchanged. Authentication still uses MQTT username/password. Requires `AUTH=key` (default) or `AUTH` unset.
+
+### mTLS (mutual TLS, recommended for production)
+
+Services connect to `ssl://nginx:8883` with TLS and a client certificate. Nginx verifies the client certificate against the CA (`ssl_verify_client on`) and the JS auth module validates that the MQTT password ends with the certificate's CN. Requires `AUTH=x509`.
+
+## Verification
+
+Check the propeller service logs for a successful MQTT connection:
+
+```bash
+docker logs propeller-manager   # Should see "MQTT connection established"
+docker logs propeller-proplet   # Should see no TLS/Socket errors
+docker logs propeller-proxy     # Should see "MQTT connection established"
+```
+
+To verify nginx is terminating TLS (MQTTS):
+
+```bash
+openssl s_client -connect localhost:8883 -CAfile docker/ssl/certs/ca.crt
+```
+
+To verify mTLS is active — without a client cert the handshake is rejected:
+
+```bash
+openssl s_client -connect localhost:8883 -CAfile docker/ssl/certs/ca.crt
+# Expected: "client sent no required SSL certificate"
+```
+
+With a valid client cert the handshake succeeds:
+
+```bash
+openssl s_client -connect localhost:8883 -CAfile docker/ssl/certs/ca.crt \
+  -cert docker/ssl/certs/proxy.crt -key docker/ssl/certs/proxy.key
+```
+
+Publish a message using mTLS:
+
+```bash
+mosquitto_pub -h localhost -p 8883 --cafile docker/ssl/certs/ca.crt \
+  --cert docker/ssl/certs/proxy.crt --key docker/ssl/certs/proxy.key \
+  -u "<client_id>" -P "<client_secret>" \
+  -i "<client_id>" \
+  -t "m/<domain_id>/c/<channel_id>/test" -m "hello"
+```
