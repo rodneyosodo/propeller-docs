@@ -9,45 +9,44 @@ The operator is configured through command-line flags and one environment variab
 
 ### Environment Variables
 
-| Variable           | Default            | Description                                                                                                |
-| ------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `WATCH_NAMESPACE`  | *(all namespaces)* | When set, the operator only watches resources in this namespace. Leave unset to watch all namespaces.      |
+| Variable          | Default            | Description                                                                                           |
+| ----------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `WATCH_NAMESPACE` | _(all namespaces)_ | When set, the operator only watches resources in this namespace. Leave unset to watch all namespaces. |
 
 ### MQTT Flags
 
-| Flag               | Default   | Description                                             |
-| ------------------ | --------- | ------------------------------------------------------- |
-| `--mqtt-address`   | —         | MQTT broker URL (required, e.g. `tcp://mqtt:1883`)      |
-| `--domain-id`      | —         | SuperMQ domain ID (required)                            |
-| `--channel-id`     | —         | SuperMQ channel ID (required)                           |
-| `--client-id`      | —         | Manager client ID for MQTT authentication (required)    |
-| `--client-key`     | —         | Manager client key for MQTT authentication (required)   |
-| `--mqtt-qos`       | `0`       | MQTT QoS level (0–2)                                    |
-| `--mqtt-timeout`   | `30s`     | Broker operation timeout                                |
+| Flag             | Default | Description                                           |
+| ---------------- | ------- | ----------------------------------------------------- |
+| `--mqtt-address` | —       | MQTT broker URL (required, e.g. `tcp://mqtt:1883`)    |
+| `--domain-id`    | —       | SuperMQ domain ID (required)                          |
+| `--channel-id`   | —       | SuperMQ channel ID (required)                         |
+| `--client-id`    | —       | Manager client ID for MQTT authentication (required)  |
+| `--client-key`   | —       | Manager client key for MQTT authentication (required) |
+| `--mqtt-qos`     | `0`     | MQTT QoS level (0–2)                                  |
+| `--mqtt-timeout` | `30s`   | Broker operation timeout                              |
 
 ### Proplet Monitoring Flags
 
-| Flag                      | Default   | Description                                                     |
-| ------------------------- | --------- | --------------------------------------------------------------- |
-| `--liveliness-interval`   | `10s`     | How often to check proplet heartbeat timestamps                 |
-| `--last-seen-threshold`   | `30s`     | How long without a heartbeat before marking a proplet Offline   |
+| Flag                    | Default | Description                                                   |
+| ----------------------- | ------- | ------------------------------------------------------------- |
+| `--liveliness-interval` | `10s`   | How often to check proplet heartbeat timestamps               |
+| `--last-seen-threshold` | `30s`   | How long without a heartbeat before marking a proplet Offline |
 
 ### Kubernetes Manager Flags
 
-| Flag                            | Default     | Description                                                |
-| ------------------------------- | ----------- | ---------------------------------------------------------- |
-| `--health-probe-bind-address`   | `:8081`     | Address for `/healthz` and `/readyz` endpoints             |
-| `--metrics-bind-address`        | `0`         | Address for Prometheus metrics (`0` disables)              |
-| `--metrics-secure`              | `true`      | Serve metrics over HTTPS                                   |
-| `--metrics-cert-path`           | —           | Directory containing the metrics TLS certificate           |
-| `--metrics-cert-name`           | `tls.crt`   | Metrics certificate filename                               |
-| `--metrics-cert-key`            | `tls.key`   | Metrics key filename                                       |
-| `--leader-elect`                | `false`     | Enable leader election for high-availability deployments   |
-| `--enable-http2`                | `false`     | Enable HTTP/2 (disabled by default for security)           |
-| `--webhook-cert-path`           | —           | Directory containing the webhook TLS certificate           |
-| `--webhook-cert-name`           | `tls.crt`   | Webhook certificate filename                               |
-| `--webhook-cert-key`            | `tls.key`   | Webhook key filename                                       |
-
+| Flag                          | Default   | Description                                              |
+| ----------------------------- | --------- | -------------------------------------------------------- |
+| `--health-probe-bind-address` | `:8081`   | Address for `/healthz` and `/readyz` endpoints           |
+| `--metrics-bind-address`      | `0`       | Address for Prometheus metrics (`0` disables)            |
+| `--metrics-secure`            | `true`    | Serve metrics over HTTPS                                 |
+| `--metrics-cert-path`         | —         | Directory containing the metrics TLS certificate         |
+| `--metrics-cert-name`         | `tls.crt` | Metrics certificate filename                             |
+| `--metrics-cert-key`          | `tls.key` | Metrics key filename                                     |
+| `--leader-elect`              | `false`   | Enable leader election for high-availability deployments |
+| `--enable-http2`              | `false`   | Enable HTTP/2 (disabled by default for security)         |
+| `--webhook-cert-path`         | —         | Directory containing the webhook TLS certificate         |
+| `--webhook-cert-name`         | `tls.crt` | Webhook certificate filename                             |
+| `--webhook-cert-key`          | `tls.key` | Webhook key filename                                     |
 
 ## Installing and Deploying
 
@@ -98,16 +97,16 @@ The operator uses the current `kubectl` context for cluster access.
 
 The operator requires a `ClusterRole` with the following permissions:
 
-| API Group                                   | Resources                                                                 | Verbs                                             |
-| ------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------- |
-| `""` (core)                                 | `configmaps`                                                              | create, delete, get, list, patch, update          |
-| `""` (core)                                 | `pods`                                                                    | get, list                                         |
-| `""` (core)                                 | `secrets`                                                                 | get                                               |
-| `apps`                                      | `deployments`                                                             | create, delete, get, list, patch, update, watch   |
-| `batch`                                     | `jobs`                                                                    | create, delete, get, list, patch, update, watch   |
-| `propeller.propeller.abstractmachines.fr`   | `tasks`, `proplets`, `propellerjobs`, `federatedjobs`, `trainingrounds`   | create, delete, get, list, patch, update, watch   |
-| `propeller.propeller.abstractmachines.fr`   | `*/status`                                                                | get, patch, update                                |
-| `propeller.propeller.abstractmachines.fr`   | `*/finalizers`                                                            | update                                            |
+| API Group                                 | Resources                                                               | Verbs                                           |
+| ----------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------- |
+| `""` (core)                               | `configmaps`                                                            | create, delete, get, list, patch, update        |
+| `""` (core)                               | `pods`                                                                  | get, list                                       |
+| `""` (core)                               | `secrets`                                                               | get                                             |
+| `apps`                                    | `deployments`                                                           | create, delete, get, list, patch, update, watch |
+| `batch`                                   | `jobs`                                                                  | create, delete, get, list, patch, update, watch |
+| `propeller.propeller.abstractmachines.fr` | `tasks`, `proplets`, `propellerjobs`, `federatedjobs`, `trainingrounds` | create, delete, get, list, patch, update, watch |
+| `propeller.propeller.abstractmachines.fr` | `*/status`                                                              | get, patch, update                              |
+| `propeller.propeller.abstractmachines.fr` | `*/finalizers`                                                          | update                                          |
 
 ### Container Security
 
@@ -123,13 +122,12 @@ Resource defaults: 10m CPU / 64Mi memory requests; 500m CPU / 128Mi limits.
 
 ### Health Probes
 
-| Endpoint         | Purpose                                                               |
-| ---------------- | --------------------------------------------------------------------- |
-| `GET /healthz`   | Liveness probe — confirms the process is alive                        |
-| `GET /readyz`    | Readiness probe — confirms the controller manager is ready to serve   |
+| Endpoint       | Purpose                                                             |
+| -------------- | ------------------------------------------------------------------- |
+| `GET /healthz` | Liveness probe — confirms the process is alive                      |
+| `GET /readyz`  | Readiness probe — confirms the controller manager is ready to serve |
 
 Both endpoints are served on `--health-probe-bind-address` (default `:8081`).
-
 
 ## Testing
 

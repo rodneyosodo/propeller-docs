@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "./.github/workflows"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      gh-dependency:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "./"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      pnpm-dependency:
+        patterns:
+          - "*"

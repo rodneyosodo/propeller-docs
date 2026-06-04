@@ -17,11 +17,11 @@ In this model, Propeller is managed through its HTTP API and CLI rather than thr
 
 The three Propeller components run as separate Deployments in a single namespace:
 
-| Component   | Role                                                          |
-| ----------- | ------------------------------------------------------------- |
-| `manager`   | Handles task dispatch and exposes the Propeller HTTP API      |
-| `proplet`   | WASM execution worker; one or more replicas                   |
-| `proxy`     | Routes WASM module fetch requests to the OCI registry or HTTP |
+| Component | Role                                                          |
+| --------- | ------------------------------------------------------------- |
+| `manager` | Handles task dispatch and exposes the Propeller HTTP API      |
+| `proplet` | WASM execution worker; one or more replicas                   |
+| `proxy`   | Routes WASM module fetch requests to the OCI registry or HTTP |
 
 All three connect to a SuperMQ MQTT broker for inter-component communication, exactly as in the Docker Compose setup. The manager receives task requests via HTTP, dispatches them to proplets via MQTT, and returns results through the API.
 
@@ -197,10 +197,10 @@ curl http://localhost:7070/proplets
 
 ## Differences from the operator
 
-| Aspect                  | Without operator                             | With operator                                    |
-| ----------------------- | -------------------------------------------- | ------------------------------------------------ |
-| Task submission         | HTTP API or `propeller-cli`                  | `kubectl apply` with Task CRs                    |
-| Proplet registration    | Automatic via MQTT alive heartbeat           | Explicit Proplet CR with `kubectl apply`         |
-| Cluster-admin required  | No                                           | Yes (to install CRDs)                            |
-| Kubernetes-native UX    | No                                           | Yes (`kubectl get tasks`, conditions, etc.)      |
-| Federated learning      | Supported via HTTP API                       | Supported via FederatedJob and TrainingRound CRs |
+| Aspect                 | Without operator                   | With operator                                    |
+| ---------------------- | ---------------------------------- | ------------------------------------------------ |
+| Task submission        | HTTP API or `propeller-cli`        | `kubectl apply` with Task CRs                    |
+| Proplet registration   | Automatic via MQTT alive heartbeat | Explicit Proplet CR with `kubectl apply`         |
+| Cluster-admin required | No                                 | Yes (to install CRDs)                            |
+| Kubernetes-native UX   | No                                 | Yes (`kubectl get tasks`, conditions, etc.)      |
+| Federated learning     | Supported via HTTP API             | Supported via FederatedJob and TrainingRound CRs |

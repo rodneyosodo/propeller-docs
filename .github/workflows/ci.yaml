@@ -21,10 +21,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
+        with:
+          cache: true
 
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Check asset optimisation
         run: pnpm run check:assets

@@ -23,12 +23,12 @@ This site uses:
 
 ### Cloudflare build settings (Dashboard)
 
-| Setting          | Value                         |
-|------------------|-------------------------------|
-| Build command    | `pnpm run build`              |
-| Deploy command   | `npx wrangler deploy`         |
-| Version command  | `npx wrangler versions upload` |
-| Root directory   | `/`                           |
+| Setting         | Value                           |
+| --------------- | ------------------------------- |
+| Build command   | `pnpm run build`                |
+| Deploy command  | `pnpm wrangler deploy`          |
+| Version command | `pnpm wrangler versions upload` |
+| Root directory  | `/`                             |
 
 ### Architecture
 
@@ -39,7 +39,7 @@ flowchart LR
     B --> C[pnpm run build]
     C --> D[next build — static export]
     D --> E[nest export under out/docs/propeller]
-    B --> F[npx wrangler deploy]
+    B --> F[pnpm wrangler deploy]
     E --> G[Cloudflare static assets]
     F --> G
   end
@@ -63,17 +63,17 @@ Set this as a Cloudflare build variable so it is embedded into the static output
 
 ## Project structure
 
-| Path                               | Description                              |
-|------------------------------------|------------------------------------------|
-| `src/app/[[...slug]]/page.tsx`     | Docs page renderer (all routes)          |
-| `src/app/api/search/route.ts`      | Static search index route handler        |
-| `src/app/og/[...slug]/route.tsx`   | OG image generation for docs pages       |
-| `src/app/llms-full.txt/route.ts`   | LLM-readable full docs text              |
-| `content/docs`                     | MDX source files                         |
-| `src/lib/source.ts`                | Fumadocs source adapter                  |
-| `src/lib/layout.shared.tsx`        | Shared layout options                    |
-| `content/openapi.yaml`             | OpenAPI spec (generates API docs)        |
-| `scripts/nest-static-export.mjs`   | Moves static export under `/docs/propeller` |
+| Path                             | Description                                 |
+| -------------------------------- | ------------------------------------------- |
+| `src/app/[[...slug]]/page.tsx`   | Docs page renderer (all routes)             |
+| `src/app/api/search/route.ts`    | Static search index route handler           |
+| `src/app/og/[...slug]/route.tsx` | OG image generation for docs pages          |
+| `src/app/llms-full.txt/route.ts` | LLM-readable full docs text                 |
+| `content/docs`                   | MDX source files                            |
+| `src/lib/source.ts`              | Fumadocs source adapter                     |
+| `src/lib/layout.shared.tsx`      | Shared layout options                       |
+| `content/openapi.yaml`           | OpenAPI spec (generates API docs)           |
+| `scripts/nest-static-export.mjs` | Moves static export under `/docs/propeller` |
 
 ## Learn More
 

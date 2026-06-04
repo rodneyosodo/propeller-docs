@@ -80,7 +80,6 @@ You also need:
 
 This guide uses `propeller/` and `propeller-k8s-operator/` to refer to these directories. Adjust the paths if you cloned them elsewhere.
 
-
 ## Step 1 — Create a Kubernetes Cluster
 
 Create a local single-node cluster with k3d:
@@ -143,7 +142,6 @@ NAME                       STATUS   ROLES                  AGE   VERSION
 k3d-k3s-default-server-0   Ready    control-plane,master   13s   v1.31.5+k3s1
 ```
 
-
 ## Step 2 — Install Custom Resource Definitions
 
 Move into the operator directory and install the CRDs into the cluster:
@@ -170,7 +168,6 @@ customresourcedefinition.apiextensions.k8s.io/trainingrounds.propeller.propeller
 
 All five CRDs are now registered with the Kubernetes API server. See the [CRD reference](/k8s/operator#custom-resource-definitions) for details on each resource type.
 
-
 ## Step 3 — Create a Workloads Namespace
 
 Create a namespace for workload resources (Proplets and Tasks). The operator's own namespace (`propeller-k8s-operator-system`) is created automatically by `make deploy` in Step 8:
@@ -184,7 +181,6 @@ Your output should look like this:
 ```bash
 namespace/propeller-workloads created
 ```
-
 
 ## Step 4 — Start the Propeller Stack (SuperMQ + Proplet)
 
@@ -253,7 +249,6 @@ magistrala-jaeger          Up 37 seconds
 ```
 
 > The propeller-manager, propeller-proplet, and propeller-proxy containers start but will fail to connect until you provision credentials. That is expected at this stage.
-
 
 ## Step 5 — Provision SuperMQ Credentials
 
@@ -355,7 +350,6 @@ MGR_ID:    0a96e62c-da03-45eb-9699-b7d8dfa843c9
 PROP_ID:   b64502f0-25bc-4926-8fbc-ad508f75d96c
 ```
 
-
 ## Step 6 — Update docker/.env and Restart Propeller Containers
 
 The Docker containers read credentials from environment variables in `docker/.env`. Update those values to match the new credentials you just provisioned.
@@ -455,11 +449,14 @@ timeout 15 mosquitto_sub -h localhost -p 1883 \
 Your output should look like this:
 
 ```json
-{"proplet_id":"b64502f0-25bc-4926-8fbc-ad508f75d96c","status":"alive","namespace":"default"}
+{
+  "proplet_id": "b64502f0-25bc-4926-8fbc-ad508f75d96c",
+  "status": "alive",
+  "namespace": "default"
+}
 ```
 
 The `proplet_id` field in alive messages is the proplet's `client_id`. The operator matches this value against the `spec.connectionConfig.clientId` field in `Proplet` CRs to identify which Proplet a message belongs to.
-
 
 ## Step 7 — Stop the Docker Propeller Manager
 
@@ -476,7 +473,6 @@ propeller-manager
 ```
 
 The proplet and proxy containers can stay running—only the manager is being replaced by the operator.
-
 
 ## Step 8 — Deploy the Operator
 
@@ -618,7 +614,6 @@ Your output should look like this:
 
 > The first log line says `MQTT connection lost`. This is a mislabeled log in the operator source—it fires from the `SetOnConnectHandler` callback and actually means the MQTT connection was **established**. All five controllers start successfully.
 
-
 ## Step 9 — Create an External Proplet
 
 Register the running docker proplet as an external Proplet CRD. The `spec.connectionConfig.clientId` must match the `proplet_id` the proplet sends in alive messages (verified in step 6 to be the proplet's `client_id`). See the [Proplet spec reference](/k8s/features#proplet-spec-reference) for all available fields.
@@ -720,29 +715,28 @@ Both `Ready` and `Connected` conditions are `True`. The `Last Seen` timestamp up
 
 The table below lists common fields. For the complete specification, see the [features documentation](/k8s/features#proplet-spec-reference).
 
-| Field                            | Type                 | Required       | Description                                         |
-| -------------------------------- | -------------------- | -------------- | --------------------------------------------------- |
-| `type`                           | `k8s` \              | `external`     | Yes                                                 |
-| `k8s.image`                      | string               | Yes (k8s only) | Container image for the proplet pod                 |
-| `k8s.replicas`                   | int                  | No             | Number of pod replicas (default: 1)                 |
-| `external.deviceType`            | string               | No             | Device label for scheduling (e.g. `raspberry-pi-4`) |
-| `external.capabilities`          | []string             | No             | Capabilities advertised for task matching           |
-| `connectionConfig.mqttAddress`   | string               | Yes            | Broker URL (e.g. `tcp://mqtt:1883`)                 |
-| `connectionConfig.domainId`      | string               | Yes            | SuperMQ domain ID                                   |
-| `connectionConfig.channelId`     | string               | Yes            | SuperMQ channel ID                                  |
-| `connectionConfig.clientId`      | string               | Yes            | SuperMQ client credential ID                        |
-| `connectionConfig.clientKey`     | string               | No*            | SuperMQ client secret (inline)                      |
+| Field                          | Type     | Required       | Description                                         |
+| ------------------------------ | -------- | -------------- | --------------------------------------------------- |
+| `type`                         | `k8s` \  | `external`     | Yes                                                 |
+| `k8s.image`                    | string   | Yes (k8s only) | Container image for the proplet pod                 |
+| `k8s.replicas`                 | int      | No             | Number of pod replicas (default: 1)                 |
+| `external.deviceType`          | string   | No             | Device label for scheduling (e.g. `raspberry-pi-4`) |
+| `external.capabilities`        | []string | No             | Capabilities advertised for task matching           |
+| `connectionConfig.mqttAddress` | string   | Yes            | Broker URL (e.g. `tcp://mqtt:1883`)                 |
+| `connectionConfig.domainId`    | string   | Yes            | SuperMQ domain ID                                   |
+| `connectionConfig.channelId`   | string   | Yes            | SuperMQ channel ID                                  |
+| `connectionConfig.clientId`    | string   | Yes            | SuperMQ client credential ID                        |
+| `connectionConfig.clientKey`   | string   | No\*           | SuperMQ client secret (inline)                      |
 
 ### Proplet Status Reference
 
-| Field                     | Description                                  |
-| ------------------------- | -------------------------------------------- |
-| `phase`                   | `Initializing`, `Running`, or `Offline`      |
-| `conditions[Ready]`       | True when proplet is ready to accept tasks   |
-| `conditions[Connected]`   | True when MQTT heartbeat is current          |
-| `lastSeen`                | Timestamp of most recent alive heartbeat     |
-| `taskCount`               | Total tasks executed since registration      |
-
+| Field                   | Description                                |
+| ----------------------- | ------------------------------------------ |
+| `phase`                 | `Initializing`, `Running`, or `Offline`    |
+| `conditions[Ready]`     | True when proplet is ready to accept tasks |
+| `conditions[Connected]` | True when MQTT heartbeat is current        |
+| `lastSeen`              | Timestamp of most recent alive heartbeat   |
+| `taskCount`             | Total tasks executed since registration    |
 
 ## Step 10 — Run a Task
 
@@ -787,7 +781,6 @@ addition-wasm   completed          docker-proplet     13s          13s          
 ```
 
 The task went from `pending` to `completed` in under 13 seconds.
-
 
 ## Step 11 — Verify the Result
 
@@ -868,24 +861,24 @@ The proplet executed the WASM binary with Wasmtime, published the result to `con
 
 The table below lists common fields. For the complete specification, see the [features documentation](/k8s/features#task-spec-reference).
 
-| Field                                | Type                | Required   | Description                                                            |
-| ------------------------------------ | ------------------- | ---------- | ---------------------------------------------------------------------- |
-| `name`                               | string              | Yes        | Task name                                                              |
-| `functionName`                       | string              | No         | Exported WASM function to invoke; defaults to the task name if omitted |
-| `file`                               | bytes               | No         | WASM binary encoded as a base64 string in YAML                         |
-| `imageUrl`                           | string              | No         | OCI image reference for the WASM module                                |
-| `inputs`                             | []string            | No         | Inputs passed to the function; numeric values are accepted             |
-| `propletSelector.propletId`          | string              | No         | Target a specific Proplet by name                                      |
-| `propletSelector.matchCapabilities`  | []string            | No         | Target Proplets with all listed capabilities                           |
-| `daemon`                             | bool                | No         | If true, task runs indefinitely (default: false)                       |
+| Field                               | Type     | Required | Description                                                            |
+| ----------------------------------- | -------- | -------- | ---------------------------------------------------------------------- |
+| `name`                              | string   | Yes      | Task name                                                              |
+| `functionName`                      | string   | No       | Exported WASM function to invoke; defaults to the task name if omitted |
+| `file`                              | bytes    | No       | WASM binary encoded as a base64 string in YAML                         |
+| `imageUrl`                          | string   | No       | OCI image reference for the WASM module                                |
+| `inputs`                            | []string | No       | Inputs passed to the function; numeric values are accepted             |
+| `propletSelector.propletId`         | string   | No       | Target a specific Proplet by name                                      |
+| `propletSelector.matchCapabilities` | []string | No       | Target Proplets with all listed capabilities                           |
+| `daemon`                            | bool     | No       | If true, task runs indefinitely (default: false)                       |
 
 ### Task Status Reference
 
-| Field             | Description                                                                            |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| `phase`           | `pending`, `scheduled`, `running`, `completed`, `failed`, `skipped`, or `interrupted`  |
-| `assignedProplet` | Name of the Proplet executing this task                                                |
-| `startedAt`       | When execution began                                                                   |
-| `finishedAt`      | When execution ended                                                                   |
-| `results`         | Return value from the WASM function                                                    |
-| `error`           | Error message when `phase` is `failed`                                                 |
+| Field             | Description                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| `phase`           | `pending`, `scheduled`, `running`, `completed`, `failed`, `skipped`, or `interrupted` |
+| `assignedProplet` | Name of the Proplet executing this task                                               |
+| `startedAt`       | When execution began                                                                  |
+| `finishedAt`      | When execution ended                                                                  |
+| `results`         | Return value from the WASM function                                                   |
+| `error`           | Error message when `phase` is `failed`                                                |

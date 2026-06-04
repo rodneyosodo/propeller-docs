@@ -1,6 +1,6 @@
 ---
 title: Encrypted workloads
-description: "Run WebAssembly workloads inside hardware-protected Trusted Execution Environments. Supports Intel TDX, AMD SEV-SNP, and Intel SGX for confidential Cloud-Edge computing with Propeller."
+description: "Run WebAssembly workloads inside hardware-protected Trusted Execution Environments. Supports Intel TDX, AMD SEV-SNP, Intel SGX, IBM SE, and ARM CCA for confidential Cloud-Edge computing with Propeller."
 ---
 
 A [Trusted Execution Environment](https://en.wikipedia.org/wiki/Trusted_execution_environment) (TEE) is a secure area inside a processor that protects code and data from unauthorized access. TEEs use hardware-based isolation to ensure that even cloud providers or system administrators cannot read your workload's data while it runs.
@@ -10,6 +10,10 @@ Common TEE technologies:
 - **Intel TDX** — Trust Domain Extensions for virtual machines
 - **AMD SEV-SNP** — Secure Encrypted Virtualization with Secure Nested Paging
 - **Intel SGX** — Software Guard Extensions for application enclaves
+- **IBM SE** — IBM Secure Execution for IBM Z and LinuxONE (s390x)
+- **ARM CCA** — Confidential Compute Architecture with Realm Management Extension
+
+Additional device attestation is also supported for NVIDIA GPUs, Hygon DCU accelerators, and TPM modules.
 
 ## Understand the flow
 
@@ -17,16 +21,20 @@ Propeller runs WASM workloads inside TEEs by combining encrypted container image
 
 1. Proplet detects if it runs inside a TEE
 2. Manager sends an encrypted workload request
-3. Proplet retrieves attestation proof from TEE hardware
+3. Attestation Agent retrieves attestation proof from TEE hardware
 4. Key Broker Service validates attestation and releases decryption keys
-5. Proplet decrypts the WASM image and executes it
+5. Confidential Data Hub delivers keys to image-rs for decryption
+6. Proplet decrypts the WASM image and executes it
 
 All decryption and execution happens inside the protected environment.
 
 ## Prerequisites
 
 - [Trustee](https://github.com/confidential-containers/trustee) — key broker and attestation stack
-- [Attestation Agent](https://github.com/confidential-containers/guest-components/blob/main/attestation-agent/README.md) — communicates with TEE hardware and KBS
+- [Guest Components](https://github.com/confidential-containers/guest-components) — in-guest TEE attestation and secret management:
+  - **Attestation Agent (AA)** — communicates with TEE hardware and KBS
+  - **Confidential Data Hub (CDH)** — central broker for secrets, sealed data, and image resources
+  - **API Server REST (ASR)** — REST HTTP gateway that forwards to AA and CDH
 - `docker`, `docker compose` — to run the Trustee stack
 - `cargo` — to build the `kbs-client` tool
 - `skopeo`, `wasm-to-oci` — to push images to a registry
@@ -113,7 +121,6 @@ cargo build --release
 ./target/release/kbs-client \
   --url http://localhost:8082 \
   config \
-  --auth-private-key kbs/config/private.key \
   set-resource \
   --resource-file private_key \
   --path default/key/propeller-addition
@@ -170,7 +177,6 @@ Set the resource policy to allow all:
 ./target/release/kbs-client \
   --url http://127.0.0.1:8082 \
   config \
-  --auth-private-key kbs/config/private.key \
   set-resource-policy \
   --policy-file kbs/sample_policies/allow_all.rego
 ```
@@ -207,6 +213,8 @@ WHVKL25KQnlobGJqa0J3T3VKSXBjaiswRlFxSXRUSFBEbXVZZnowS0F3dz0=
 ```
 
 The path `default/key/propeller-addition` identifies this key. Use it when creating tasks.
+
+Resource URIs use the format `kbs:///<repository>/<type>/<tag>`. Plugin URIs are also supported using `kbs+<plugin>:///` to route requests through specific KBS plugins (e.g., `kbs+pkcs11:///default/key/my-key`).
 
 ![KBS Setup](images/tee/kbs-setup.svg)
 
@@ -291,14 +299,14 @@ Set the required variables before running the script:
 
 Optional variables:
 
-| Variable               | Description                          | Default                |
-| ---------------------- | ------------------------------------ | ---------------------- |
-| `PROPLET_MQTT_ADDRESS` | MQTT broker address                  | `tcp://localhost:1883` |
-| `KBS_URL`              | Key Broker Service URL               | `http://10.0.2.2:8082` |
-| `ENABLE_CVM`           | CVM mode (`auto`/`tdx`/`sev`/`none`) | `auto`                 |
-| `RAM`                  | VM memory                            | `16384M`               |
-| `CPU`                  | CPU cores                            | `4`                    |
-| `DISK_SIZE`            | Disk size                            | `40G`                  |
+| Variable               | Description                                           | Default                |
+| ---------------------- | ----------------------------------------------------- | ---------------------- |
+| `PROPLET_MQTT_ADDRESS` | MQTT broker address                                   | `tcp://localhost:1883` |
+| `KBS_URL`              | Key Broker Service URL                                | `http://10.0.2.2:8082` |
+| `ENABLE_CVM`           | CVM mode (`auto`/`tdx`/`sev`/`snp`/`se`/`cca`/`none`) | `auto`                 |
+| `RAM`                  | VM memory                                             | `16384M`               |
+| `CPU`                  | CPU cores                                             | `4`                    |
+| `DISK_SIZE`            | Disk size                                             | `40G`                  |
 
 ### Choose a CVM mode
 
@@ -311,8 +319,17 @@ The script auto-detects Intel TDX or AMD SEV. Override with `ENABLE_CVM`:
 # Force Intel TDX
 ENABLE_CVM=tdx ./qemu.sh
 
-# Force AMD SEV
+# Force AMD SEV (legacy SEV without attester)
 ENABLE_CVM=sev ./qemu.sh
+
+# Force AMD SEV-SNP (with SNP attester)
+ENABLE_CVM=snp ./qemu.sh
+
+# Force IBM Secure Execution (s390x)
+ENABLE_CVM=se ./qemu.sh
+
+# Force ARM CCA (Realm Management Extension)
+ENABLE_CVM=cca ./qemu.sh
 
 # Regular VM (no confidential computing)
 ENABLE_CVM=none ./qemu.sh
@@ -336,11 +353,11 @@ The script supports three targets:
 A full example with credentials:
 
 ```bash
-export PROPLET_DOMAIN_ID="a93fa93e-30d0-425e-b5d1-c93cd916dca7"
-export PROPLET_CLIENT_ID="c902e51c-5eac-4a2d-a489-660b5f7ab461"
-export PROPLET_CLIENT_KEY="75a0fefe-9713-478d-aafd-72032c2d9958"
-export PROPLET_CHANNEL_ID="54bdaf41-0009-4d3e-bd49-6d7abda7a832"
-export PROPLET_MQTT_ADDRESS="tcp://0.tcp.in.ngrok.io:10721"
+export PROPLET_DOMAIN_ID=your-domain-id
+export PROPLET_CLIENT_ID=your-client-id
+export PROPLET_CLIENT_KEY=your-client-key
+export PROPLET_CHANNEL_ID=your-channel-id
+export PROPLET_MQTT_ADDRESS="tcp://10.0.2.2:1883"
 export KBS_URL="http://10.0.2.2:8082"
 ./qemu.sh
 ```
@@ -503,18 +520,37 @@ export PROPLET_DOMAIN_ID=your-domain-id
 export PROPLET_CLIENT_ID=your-client-id
 export PROPLET_CLIENT_KEY=your-client-key
 export PROPLET_CHANNEL_ID=your-channel-id
-export PROPLET_MQTT_ADDRESS=your-mqtt-address
-export PROPLET_KBS_URI=http://10.0.2.2:8082
-export PROPLET_AA_CONFIG_PATH=/etc/default/proplet.toml
+export PROPLET_MQTT_ADDRESS="tcp://10.0.2.2:1883"
+export KBS_URL="http://10.0.2.2:8082"
+export PROPLET_AA_CONFIG_PATH=/etc/attestation-agent.toml
 ```
 
-The `PROPLET_AA_CONFIG_PATH` points to the Attestation Agent config. The default file looks like this:
+The `PROPLET_AA_CONFIG_PATH` points to the Attestation Agent config (must use `.toml` or `.json` extension). The default file looks like this:
 
 ```toml
 [token_configs]
-[token_configs.coco_kbs]
+
+[token_configs.kbs]
 url = "http://10.0.2.2:8082"
+
+[eventlog_config]
+init_pcr = 17
+enable_eventlog = false
+
+[log]
+level = "info"
 ```
+
+The `[token_configs.kbs]` section configures the KBS connection:
+
+- `url` — KBS endpoint URL
+- `cert` (optional) — PEM certificate for TLS connections to KBS
+- `tee_key_algorithm` (optional) — key exchange algorithm, defaults to `ECDH-ES+A256KW-P256`
+
+The `[eventlog_config]` section controls event log recording:
+
+- `init_pcr` — PCR register index for init entry (default: 17)
+- `enable_eventlog` — whether to record event logs (default: false)
 
 Proplet is automatically started by the quickstart script. If you want to start it manually, use:
 
@@ -636,14 +672,26 @@ warning: using `--invoke` with a function that returns values is experimental an
 
 ![Architecture](images/tee/architecture.svg)
 
+The guest components stack consists of:
+
+| Component                       | Role                                                                                                                                                                                                                                                                 |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Attestation Agent (AA)**      | Generates attestation evidence and tokens from TEE hardware. Supports Intel TDX, AMD SEV-SNP, Intel SGX, IBM SE, ARM CCA, Hygon CSV, and Azure vTPM platforms. Also supports additional device attestation for NVIDIA GPUs, Hygon DCU accelerators, and TPM modules. |
+| **Confidential Data Hub (CDH)** | Central broker for secrets, sealed storage (LUKS2), KMS integration, and image resource management. Retrieves decryption keys from KBS after attestation.                                                                                                            |
+| **API Server REST (ASR)**       | REST HTTP gateway that exposes AA and CDH services over HTTP. Provides endpoints for evidence, tokens, resources, and additional device attestation.                                                                                                                 |
+| **CoCo Keyprovider**            | Handles OCI image encryption/decryption key wrapping. Registers keys with KBS and provides them to image-rs for decryption.                                                                                                                                          |
+| **image-rs**                    | OCI container image pulling, layer decryption, and signature verification with multiple backend support.                                                                                                                                                             |
+
+Data flow: `REST API (ASR) → ttrpc → AA (attestation) + CDH (secrets/images) → image-rs (decryption with keys from CDH)`
+
 ### Execution flow
 
 1. Detection - Proplet checks for TEE device files at startup
 2. Task receipt - Manager publishes an encrypted task request
-3. Image pull - Proplet downloads the encrypted OCI image
-4. Attestation - Hardware generates proof of TEE environment
-5. Key retrieval - KBS validates attestation and releases key
-6. Decryption - Image layers decrypted inside the TEE
+3. Image pull - image-rs downloads the encrypted OCI image
+4. Attestation - Attestation Agent generates proof of TEE environment (with optional additional device evidence)
+5. Key retrieval - KBS validates attestation and releases key via Confidential Data Hub
+6. Decryption - Image layers decrypted inside the TEE by image-rs
 7. Execution - WASM runs in the protected environment
 8. Results - Output published to Manager via MQTT
 
@@ -655,3 +703,4 @@ warning: using `--invoke` with a function that returns values is experimental an
 - Integrity - attestation proves correct TEE configuration
 - Isolation - hardware prevents external access to execution
 - Verifiability - attestation reports allow remote verification
+- Multi-device attestation - supports composite evidence from additional TEE devices (NVIDIA GPUs, Hygon DCU, TPM) alongside the primary TEE platform
