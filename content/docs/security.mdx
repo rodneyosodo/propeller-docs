@@ -43,7 +43,7 @@ The `CRT_FILE_NAME` determines the output: `certs/<name>.crt` and `certs/<name>.
 
 Default values:
 
-```txt
+```
 CRT_LOCATION = certs
 O ?= Propeller
 OU_CA ?= propeller_ca
@@ -74,7 +74,7 @@ In `docker/.env`, configure the MQTT address and cert paths for your chosen mode
 
 **MQTTS** (TLS, server cert only — set CA cert, leave client cert/key empty):
 
-```env
+```bash
 # Manager
 MANAGER_MQTT_ADDRESS="ssl://nginx:8883"
 MANAGER_MQTT_TLS_CA_CERT=/etc/propeller/tls/ca.crt
@@ -102,7 +102,7 @@ AUTH=key make start-magistrala
 
 **mTLS** (mutual TLS — set all three cert paths):
 
-```env
+```bash
 # Manager
 MANAGER_MQTT_ADDRESS="ssl://nginx:8883"
 MANAGER_MQTT_TLS_CA_CERT=/etc/propeller/tls/ca.crt
