@@ -26,7 +26,7 @@ jobs:
           cache: true
 
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Check asset optimisation
         run: pnpm run check:assets
