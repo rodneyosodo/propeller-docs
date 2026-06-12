@@ -5,6 +5,8 @@ description: HTTP client example
 
 This WASI P2 component makes outgoing HTTP requests using wasi:http/outgoing-handler. It demonstrates GET, POST, and header inspection against the companion http-server example as well as an external endpoint [httpbin.org](https://httpbin.org/).
 
+When running via proplet with `PROPLET_HTTP_TLS_CA_CERT` set, outgoing requests from WASM components can also connect to internal HTTPS servers using custom or self-signed certificates — see [Proplet: HTTP TLS](/proplet#http-tls).
+
 ## Source Code
 
 The source code is available in the [examples/http-client](https://github.com/absmach/propeller/blob/main/examples/http-client/src/main.rs) directory.
