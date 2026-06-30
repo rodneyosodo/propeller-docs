@@ -115,11 +115,11 @@ The proplet selects its WebAssembly runtime at startup based on configuration an
 
 When executing a WebAssembly binary, the Wasmtime runtime automatically detects the module type:
 
-| Module Type | Detection                                             | Execution Path                                |
-| ----------- | ----------------------------------------------------- | --------------------------------------------- |
-| Core module | Magic bytes `0x00 0x61 0x73 0x6d` + version != `0x0d` | `start_app_core` — direct function invocation |
-| Component   | Magic bytes indicate component model                  | `start_app_component` — WASI Preview 2        |
-| HTTP Proxy  | Component with `wasi:http/incoming-handler` export    | `start_app_proxy` — HTTP server mode          |
+| Module Type | Detection                                             | Embedded Wasmtime                      | Host Runtime                               |
+| ----------- | ----------------------------------------------------- | -------------------------------------- | ------------------------------------------ |
+| Core module | Magic bytes `0x00 0x61 0x73 0x6d` + version != `0x0d` | `start_app_core` — direct invocation   | `wasmtime run`                             |
+| Component   | Magic bytes indicate component model                  | `start_app_component` — WASI Preview 2 | `wasmtime run`                             |
+| HTTP Proxy  | Component with `wasi:http/incoming-handler` export    | `start_app_proxy` — built-in HTTP      | `wasmtime serve -Shttp` — external process |
 
 ### TEE Detection
 
@@ -352,9 +352,50 @@ export PROPLET_EXTERNAL_WASM_RUNTIME="/usr/bin/wasmtime"
 propeller-proplet
 ```
 
-The proplet invokes the specified binary as a subprocess, passing the Wasm file as the first argument followed by any `cli_args` from the task.
+The proplet detects the module type from the binary and invokes the appropriate subcommand:
 
-For a task using the host runtime:
+| Module Type | Subcommand                                 | Example                                 |
+| ----------- | ------------------------------------------ | --------------------------------------- |
+| Core module | `wasmtime run <file> [cli_args…]`          | Standard execution with task inputs     |
+| Component   | `wasmtime run <file> [cli_args…]`          | WASI Preview 2 component execution      |
+| HTTP Proxy  | `wasmtime serve -Shttp <file> [cli_args…]` | HTTP server for WASI `incoming-handler` |
+
+### Proxy Components
+
+When the Wasm binary exports `wasi:http/incoming-handler`, the host runtime spawns `wasmtime serve -Shttp <file>` as an external HTTP server process. This enables the external runtime to handle the same proxy component workloads that the embedded runtime supports.
+
+The task result contains the actual port the server is listening on:
+
+```json
+{
+  "task_id": "…",
+  "status": "completed",
+  "result": "started at port 8222"
+}
+```
+
+#### Port Allocation
+
+When `PROPLET_HTTP_PROXY_PORT` is set (default `8222`), the host runtime probes that port first. If the port is busy, it tries the next port (8223, 8224, etc.) up to 100 attempts. If `cli_args` includes `--addr` (e.g. `--addr 0.0.0.0:9093`), the specified port is used directly without fallback.
+
+#### CLI Arguments
+
+Proxy components accept `cli_args` for `wasmtime serve` flags:
+
+```json
+{
+  "name": "http-guest",
+  "image_url": "ghcr.io/myorg/http-proxy:v1",
+  "cli_args": ["--addr", "0.0.0.0:9093"],
+  "daemon": true
+}
+```
+
+The task must set `"daemon": true` since `wasmtime serve` runs indefinitely. When `daemon` is true, the proplet tracks the subprocess and reports its PID rather than waiting for it to exit.
+
+### Core & Component Tasks
+
+For non-proxy modules, the proplet invokes `wasmtime run <file>` with any `cli_args` from the task:
 
 ```json
 {
