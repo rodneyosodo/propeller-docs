@@ -358,7 +358,7 @@ The proplet detects the module type from the binary and invokes the appropriate 
 | ----------- | ------------------------------------------ | --------------------------------------- |
 | Core module | `wasmtime run <file> [cli_args…]`          | Standard execution with task inputs     |
 | Component   | `wasmtime run <file> [cli_args…]`          | WASI Preview 2 component execution      |
-| HTTP Proxy  | `wasmtime serve -Shttp <file> [cli_args…]` | HTTP server for WASI `incoming-handler` |
+| HTTP Proxy  | `wasmtime serve -Shttp [cli_args…] <file>` | HTTP server for WASI `incoming-handler` |
 
 ### Proxy Components
 
@@ -391,7 +391,7 @@ Proxy components accept `cli_args` for `wasmtime serve` flags:
 }
 ```
 
-The task must set `"daemon": true` since `wasmtime serve` runs indefinitely. When `daemon` is true, the proplet tracks the subprocess and reports its PID rather than waiting for it to exit.
+The task must set `"daemon": true` since `wasmtime serve` runs indefinitely. When `daemon` is true, the proplet tracks the subprocess and reports the assigned port in the task result rather than waiting for it to exit.
 
 ### Core & Component Tasks
 
