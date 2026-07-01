@@ -1,6 +1,8 @@
 "use client";
-import { defineClientConfig } from "fumadocs-openapi/ui/client";
+import { createOpenAPIPage, type OpenAPIPageProps } from "fumadocs-openapi/ui";
 
-export default defineClientConfig({
-  // client config
-});
+const OpenAPIPage = createOpenAPIPage();
+
+export default function APIPageClient(props: OpenAPIPageProps) {
+  return <OpenAPIPage {...props} />;
+}
