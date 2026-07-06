@@ -18,14 +18,14 @@ Manager plugins run inside the manager process and wrap every task operation. Fo
 
 ### Hooks
 
-| Hook                       | When it runs                                    | What it can do                                               |
-| -------------------------- | ----------------------------------------------- | ------------------------------------------------------------ |
-| `authorize`                | Before every mutating operation                 | Allow or deny the request with a reason                      |
+| Hook                       | When it runs                                    | What it can do                                                |
+| -------------------------- | ----------------------------------------------- | ------------------------------------------------------------- |
+| `authorize`                | Before every mutating operation                 | Allow or deny the request with a reason                       |
 | `enrich_task`              | After `authorize` on create/workflow/job        | Inject env vars, override image URL, set priority, add inputs |
-| `on_before_proplet_select` | Before the scheduler picks a proplet            | Require specific tags or minimum memory                      |
-| `on_before_dispatch`       | After proplet is selected, before MQTT dispatch | Allow/deny dispatch, inject extra env vars                   |
-| `on_task_start`            | After `StartTask` succeeds                      | Side-effects only (notifications, audit log)                 |
-| `on_task_complete`         | When a task finishes on a proplet               | Side-effects only                                            |
+| `on_before_proplet_select` | Before the scheduler picks a proplet            | Require specific tags or minimum memory                       |
+| `on_before_dispatch`       | After proplet is selected, before MQTT dispatch | Allow/deny dispatch, inject extra env vars                    |
+| `on_task_start`            | After `StartTask` succeeds                      | Side-effects only (notifications, audit log)                  |
+| `on_task_complete`         | When a task finishes on a proplet               | Side-effects only                                             |
 
 All hooks receive an `AuthContext` containing the `user_id` and `action` string (`create`, `start`, `stop`, `delete`, `update`).
 
