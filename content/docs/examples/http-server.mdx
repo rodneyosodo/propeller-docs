@@ -179,3 +179,9 @@ The results of the task will be something like this.
 ```bash
 Serving HTTP on http://127.0.0.1:9090/
 ```
+
+## Serving Over HTTPS
+
+The proplet does **not** terminate TLS directly. To serve WASM proxy components over HTTPS, deploy a standard reverse proxy (nginx, Caddy, Traefik) in front of the proplet. The reverse proxy handles TLS termination and forwards plain HTTP requests to the port where the WASM component is listening.
+
+For details, see [Proplet: Inbound HTTPS](/proplet#inbound-https).

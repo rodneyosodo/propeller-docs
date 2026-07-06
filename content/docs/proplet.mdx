@@ -247,6 +247,16 @@ When `PROPLET_HTTP_TLS_INSECURE_SKIP_VERIFY=true`, all TLS certificate verificat
 
 The same TLS configuration also applies when the proplet itself fetches WASM binaries over HTTPS (via `image_url` starting with `https://`).
 
+### Inbound HTTPS
+
+WASM proxy components (those exporting `wasi:http/incoming-handler`) receive HTTP requests through the proplet's built-in reverse proxy. The proplet does **not** terminate TLS directly. To serve proxy components over HTTPS, deploy a standard reverse proxy in front of the proplet:
+
+- [nginx](https://nginx.org/en/docs/http/configuring_https_servers.html)
+- [Caddy](https://caddyserver.com/docs/caddyfile#https)
+- [Traefik](https://doc.traefik.io/traefik/https/overview/)
+
+Configure the reverse proxy to accept HTTPS on the desired port and proxy requests as plain HTTP to the port where the WASM proxy component is listening. This is the same approach used throughout the Propeller ecosystem (MQTT over TLS, gRPC over TLS, etc.).
+
 #### Docker Compose
 
 In `docker/compose.propeller.yaml`, uncomment the environment variables and volume mount under the proplet service:
@@ -262,7 +272,7 @@ services:
     volumes:
       # HTTP TLS CA cert (uncomment to trust custom CAs for outgoing HTTPS):
       # - type: bind
-      #   source: ./ca.crt
+      #   source: ./ssl/certs/ca.crt
       #   target: /etc/propeller/tls/http-ca.crt
       #   read_only: true
 ```
@@ -274,7 +284,7 @@ PROPLET_HTTP_TLS_CA_CERT=/etc/propeller/tls/http-ca.crt
 # PROPLET_HTTP_TLS_INSECURE_SKIP_VERIFY=false
 ```
 
-Place your CA certificate at `docker/ca.crt` (or adjust the source path in the volume mount).
+The CA certificate is generated alongside the other TLS certificates by running `make all` (or `make ca`) in `docker/ssl/`. It lives at `docker/ssl/certs/ca.crt`. See the [certificate generation](#certificate-generation) section for details.
 
 #### Running as a Binary
 
