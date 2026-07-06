@@ -120,8 +120,8 @@ Your output should look like this:
           "description": "Payload of a proplet heartbeat event",
           "type": "object",
           "properties": {
-            "alive":      { "type": "boolean" },
-            "name":       { "type": "string" },
+            "alive": { "type": "boolean" },
+            "name": { "type": "string" },
             "proplet_id": { "type": "string" },
             "task_count": { "type": "integer", "minimum": 0 }
           }
@@ -130,17 +130,17 @@ Your output should look like this:
           "description": "Static metadata reported by the proplet at registration",
           "type": "object",
           "properties": {
-            "cpu_arch":           { "type": "string" },
-            "description":        { "type": "string" },
-            "environment":        { "type": "string" },
-            "hostname":           { "type": "string" },
-            "ip":                 { "type": "string" },
-            "location":           { "type": "string" },
-            "os":                 { "type": "string" },
-            "proplet_version":    { "type": "string" },
-            "tags":               { "type": "array", "items": { "type": "string" } },
+            "cpu_arch": { "type": "string" },
+            "description": { "type": "string" },
+            "environment": { "type": "string" },
+            "hostname": { "type": "string" },
+            "ip": { "type": "string" },
+            "location": { "type": "string" },
+            "os": { "type": "string" },
+            "proplet_version": { "type": "string" },
+            "tags": { "type": "array", "items": { "type": "string" } },
             "total_memory_bytes": { "type": "integer", "minimum": 0 },
-            "wasm_runtime":       { "type": "string" }
+            "wasm_runtime": { "type": "string" }
           }
         },
         "TaskDispatch": {
@@ -148,22 +148,25 @@ Your output should look like this:
           "type": "object",
           "required": ["id", "name"],
           "properties": {
-            "cli_args":          { "type": "array", "items": { "type": "string" } },
-            "daemon":            { "type": "boolean" },
-            "encrypted":         { "type": "boolean" },
-            "env":               { "type": "object", "additionalProperties": { "type": "string" } },
-            "id":                { "type": "string" },
-            "image_url":         { "type": "string" },
-            "inputs":            { "type": "array", "items": { "type": "string" } },
+            "cli_args": { "type": "array", "items": { "type": "string" } },
+            "daemon": { "type": "boolean" },
+            "encrypted": { "type": "boolean" },
+            "env": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "id": { "type": "string" },
+            "image_url": { "type": "string" },
+            "inputs": { "type": "array", "items": { "type": "string" } },
             "kbs_resource_path": { "type": "string" },
-            "name":              { "type": "string" }
+            "name": { "type": "string" }
           }
         },
         "TaskResult": {
           "description": "Result payload emitted after a task completes",
           "type": "object",
           "properties": {
-            "error":      { "type": "string" },
+            "error": { "type": "string" },
             "proplet_id": { "type": "string" },
             "results": {
               "description": "Key-value output produced by the task; keys and value types depend on the wasm module",

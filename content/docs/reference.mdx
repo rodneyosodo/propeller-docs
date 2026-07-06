@@ -61,38 +61,38 @@ propeller-cli provision [--file-name <path>]
 
 ### Task
 
-| Field                | Type            | Description                                                                |
-| -------------------- | --------------- | -------------------------------------------------------------------------- |
-| `id`                 | string (UUID)   | Unique task identifier. Assigned by the Manager on creation.               |
-| `name`               | string          | Human-readable task name.                                                  |
-| `kind`               | string          | Task kind: `standard` or `federated`.                                      |
-| `state`              | integer         | Current execution state (see Task States below).                           |
-| `image_url`          | string          | OCI image reference for the Wasm binary (e.g. `docker.io/myorg/app:v1`).   |
-| `file`               | string          | Base64-encoded Wasm binary for direct embedding.                           |
-| `cli_args`           | array of string | Arguments passed to the Wasm runtime (e.g. `["--invoke", "add"]`).         |
-| `inputs`             | array           | Input values (strings or numbers) forwarded to the Wasm function.          |
-| `env`                | object          | Environment variables injected into the Wasm execution context.            |
-| `daemon`             | boolean         | If `true`, the task runs continuously until explicitly stopped.            |
-| `encrypted`          | boolean         | If `true`, the Wasm binary is encrypted and requires a TEE for decryption. |
-| `kbs_resource_path`  | string          | KBS resource path used to fetch the decryption key for an encrypted task.  |
-| `proplet_id`         | string (UUID)   | Pin execution to a specific proplet, bypassing the scheduler.              |
-| `depends_on`         | array of string | IDs of tasks that must complete before this task starts (workflow DAG).    |
-| `run_if`             | string          | Condition for execution: `success` (default) or `failure`.                 |
-| `workflow_id`        | string (UUID)   | ID of the workflow this task belongs to.                                   |
-| `job_id`             | string (UUID)   | ID of the job this task belongs to.                                        |
-| `results`            | any             | Output stored after the task completes successfully.                       |
-| `error`              | string          | Error message if the task failed.                                          |
-| `monitoring_profile` | object          | Per-task monitoring configuration (see [Monitoring](monitoring)).          |
-| `schedule`           | string          | Cron expression for recurring execution (e.g. `"0 * * * *"`).              |
-| `timezone`           | string          | Timezone for cron schedule evaluation (default: `UTC`).                    |
-| `is_recurring`       | boolean         | `true` if a `schedule` is set.                                             |
-| `next_run`           | timestamp       | Computed time of the next scheduled execution.                             |
-| `priority`           | integer         | Task priority hint for the scheduler (range 0–100, default 50).            |
-| `mode`               | string          | Federated learning mode: `infer` or `train`.                               |
-| `start_time`         | timestamp       | Time the task started executing.                                           |
-| `finish_time`        | timestamp       | Time the task completed or failed.                                         |
-| `created_at`         | timestamp       | Time the task was created.                                                 |
-| `updated_at`         | timestamp       | Time the task was last updated.                                            |
+| Field                | Type            | Description                                                                                                                     |
+| -------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | string (UUID)   | Unique task identifier. Assigned by the Manager on creation.                                                                    |
+| `name`               | string          | Human-readable task name.                                                                                                       |
+| `kind`               | string          | Task kind: `standard` or `federated`.                                                                                           |
+| `state`              | integer         | Current execution state (see Task States below).                                                                                |
+| `image_url`          | string          | OCI image reference for the Wasm binary (e.g. `docker.io/myorg/app:v1`).                                                        |
+| `file`               | string          | Base64-encoded Wasm binary for direct embedding (redacted with `<REDACTED>` in API responses to avoid leaking binary contents). |
+| `cli_args`           | array of string | Arguments passed to the Wasm runtime (e.g. `["--invoke", "add"]`).                                                              |
+| `inputs`             | array           | Input values (strings or numbers) forwarded to the Wasm function.                                                               |
+| `env`                | object          | Environment variables injected into the Wasm execution context.                                                                 |
+| `daemon`             | boolean         | If `true`, the task runs continuously until explicitly stopped.                                                                 |
+| `encrypted`          | boolean         | If `true`, the Wasm binary is encrypted and requires a TEE for decryption.                                                      |
+| `kbs_resource_path`  | string          | KBS resource path used to fetch the decryption key for an encrypted task.                                                       |
+| `proplet_id`         | string (UUID)   | Pin execution to a specific proplet, bypassing the scheduler.                                                                   |
+| `depends_on`         | array of string | IDs of tasks that must complete before this task starts (workflow DAG).                                                         |
+| `run_if`             | string          | Condition for execution: `success` (default) or `failure`.                                                                      |
+| `workflow_id`        | string (UUID)   | ID of the workflow this task belongs to.                                                                                        |
+| `job_id`             | string (UUID)   | ID of the job this task belongs to.                                                                                             |
+| `results`            | any             | Output stored after the task completes successfully.                                                                            |
+| `error`              | string          | Error message if the task failed.                                                                                               |
+| `monitoring_profile` | object          | Per-task monitoring configuration (see [Monitoring](monitoring)).                                                               |
+| `schedule`           | string          | Cron expression for recurring execution (e.g. `"0 * * * *"`).                                                                   |
+| `timezone`           | string          | Timezone for cron schedule evaluation (default: `UTC`).                                                                         |
+| `is_recurring`       | boolean         | `true` if a `schedule` is set.                                                                                                  |
+| `next_run`           | timestamp       | Computed time of the next scheduled execution.                                                                                  |
+| `priority`           | integer         | Task priority hint for the scheduler (range 0–100, default 50).                                                                 |
+| `mode`               | string          | Federated learning mode: `infer` or `train`.                                                                                    |
+| `start_time`         | timestamp       | Time the task started executing.                                                                                                |
+| `finish_time`        | timestamp       | Time the task completed or failed.                                                                                              |
+| `created_at`         | timestamp       | Time the task was created.                                                                                                      |
+| `updated_at`         | timestamp       | Time the task was last updated.                                                                                                 |
 
 #### Task States
 
@@ -110,15 +110,15 @@ propeller-cli provision [--file-name <path>]
 
 ### Job
 
-| Field          | Type          | Description                                 |
-| -------------- | ------------- | ------------------------------------------- |
-| `job_id`       | string (UUID) | Unique job identifier.                      |
-| `name`         | string        | Human-readable job name.                    |
-| `state`        | integer       | Current execution state (see Task States).  |
-| `tasks`        | array         | List of task objects belonging to this job. |
-| `start_time`   | timestamp     | Time the job started executing.             |
-| `finish_time`  | timestamp     | Time the job completed or failed.           |
-| `created_at`   | timestamp     | Time the job was created.                   |
+| Field         | Type          | Description                                 |
+| ------------- | ------------- | ------------------------------------------- |
+| `job_id`      | string (UUID) | Unique job identifier.                      |
+| `name`        | string        | Human-readable job name.                    |
+| `state`       | integer       | Current execution state (see Task States).  |
+| `tasks`       | array         | List of task objects belonging to this job. |
+| `start_time`  | timestamp     | Time the job started executing.             |
+| `finish_time` | timestamp     | Time the job completed or failed.           |
+| `created_at`  | timestamp     | Time the job was created.                   |
 
 #### Job Execution Modes
 
