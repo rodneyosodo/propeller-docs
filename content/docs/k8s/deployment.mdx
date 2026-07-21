@@ -36,7 +36,7 @@ The operator is configured through command-line flags and one environment variab
 
 | Flag                          | Default   | Description                                              |
 | ----------------------------- | --------- | -------------------------------------------------------- |
-| `--health-probe-bind-address` | `:8081`   | Address for `/healthz` and `/readyz` endpoints           |
+| `--health-probe-bind-address` | `:8181`   | Address for `/healthz` and `/readyz` endpoints           |
 | `--metrics-bind-address`      | `0`       | Address for Prometheus metrics (`0` disables)            |
 | `--metrics-secure`            | `true`    | Serve metrics over HTTPS                                 |
 | `--metrics-cert-path`         | —         | Directory containing the metrics TLS certificate         |
@@ -127,7 +127,7 @@ Resource defaults: 10m CPU / 64Mi memory requests; 500m CPU / 128Mi limits.
 | `GET /healthz` | Liveness probe — confirms the process is alive                      |
 | `GET /readyz`  | Readiness probe — confirms the controller manager is ready to serve |
 
-Both endpoints are served on `--health-probe-bind-address` (default `:8081`).
+Both endpoints are served on `--health-probe-bind-address` (default `:8181`).
 
 ## Testing
 
