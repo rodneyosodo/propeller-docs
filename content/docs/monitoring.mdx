@@ -291,11 +291,11 @@ The `aggregated` field is only present when `retain_history: true` in the monito
 
 ### Subscribing to Metrics
 
-**Subscribe to per-task metrics for a specific domain/channel:**
+**Subscribe to per-task metrics for a specific tenant/channel:**
 
 ```bash
 mosquitto_sub -h localhost -p 1883 \
-  -t "m/domain-123/c/channel-456/control/proplet/task_metrics" -v
+  -t "m/tenant_id-123/c/channel_id-456/control/proplet/task_metrics" -v
 ```
 
 **Subscribe to proplet metrics:**

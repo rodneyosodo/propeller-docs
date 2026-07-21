@@ -45,9 +45,9 @@ kubectl create namespace propeller
 ```bash
 kubectl create secret generic propeller-credentials \
   --namespace propeller \
-  --from-literal=MANAGER_API_KEY=<manager-client-key> \
-  --from-literal=PROPLET_API_KEY=<proplet-client-key> \
-  --from-literal=PROXY_API_KEY=<proxy-client-key>
+  --from-literal=MANAGER_API_KEY=<manager-api-key> \
+  --from-literal=PROPLET_API_KEY=<proplet-api-key> \
+  --from-literal=PROXY_API_KEY=<proxy-api-key>
 ```
 
 ### 3. Apply Deployments
@@ -75,11 +75,11 @@ spec:
           image: ghcr.io/absmach/propeller/manager:latest
           env:
             - name: MANAGER_TENANT_ID
-              value: "<domain-id>"
+              value: "<tenant-id>"
             - name: MANAGER_CHANNEL_ID
               value: "<channel-id>"
             - name: MANAGER_ENTITY_ID
-              value: "<manager-client-id>"
+              value: "<manager-entity-id>"
             - name: MANAGER_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -108,11 +108,11 @@ spec:
           image: ghcr.io/absmach/propeller/proplet:latest
           env:
             - name: PROPLET_TENANT_ID
-              value: "<domain-id>"
+              value: "<tenant-id>"
             - name: PROPLET_CHANNEL_ID
               value: "<channel-id>"
             - name: PROPLET_ENTITY_ID
-              value: "<proplet-client-id>"
+              value: "<proplet-entity-id>"
             - name: PROPLET_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -141,11 +141,11 @@ spec:
           image: ghcr.io/absmach/propeller/proxy:latest
           env:
             - name: PROXY_TENANT_ID
-              value: "<domain-id>"
+              value: "<tenant-id>"
             - name: PROXY_CHANNEL_ID
               value: "<channel-id>"
             - name: PROXY_ENTITY_ID
-              value: "<proplet-client-id>"
+              value: "<proxy-entity-id>"
             - name: PROXY_API_KEY
               valueFrom:
                 secretKeyRef:

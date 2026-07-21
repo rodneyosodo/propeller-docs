@@ -112,9 +112,16 @@ Proplet includes a built-in process monitoring subsystem for observing task and 
 
 The Proxy service handles downloading and distributing WebAssembly modules from OCI registries and distributes them to proplets.
 
-### Atom
+### Plugin System
 
-[Atom](https://github.com/absmach/atom) is an open-source identity and authorization platform that provides entity management, tenant isolation, access policies, and API key management.
+Propeller includes two independent WebAssembly plugin systems that extend behaviour at runtime without recompiling core binaries:
+
+- **Manager Plugins**: Written with [`propeller-plugin-sdk`](https://github.com/absmach/propeller/tree/main/crates/propeller-plugin-sdk) (Rust, compiled to `wasm32-wasip1`). Plugins intercept task operations (authorize, enrich, on_before_proplet_select, on_before_dispatch, on_task_start, on_task_complete) before they reach the scheduler.
+- **Proplet Plugins**: Written with [`propeller-proplet-plugin-sdk`](https://github.com/absmach/propeller/tree/main/crates/propeller-proplet-plugin-sdk) (Rust, WIT component model). Plugins intercept tasks on the edge node just before execution.
+
+Both plugin types run inside a sandboxed Wasmtime instance with WASI. See the [Plugins](/plugins) documentation for details.
+
+### Atom
 
 It uses [FluxMQ](https://github.com/absmach/fluxmq) as its message broker and provides a GraphQL API for managing:
 

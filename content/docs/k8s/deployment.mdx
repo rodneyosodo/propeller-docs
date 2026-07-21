@@ -15,15 +15,15 @@ The operator is configured through command-line flags and one environment variab
 
 ### MQTT Flags
 
-| Flag             | Default | Description                                           |
-| ---------------- | ------- | ----------------------------------------------------- |
-| `--mqtt-address` | —       | MQTT broker URL (required, e.g. `tcp://mqtt:1883`)    |
-| `--domain-id`    | —       | Atom domain ID (required)                          |
-| `--channel-id`   | —       | Atom channel ID (required)                         |
-| `--client-id`    | —       | Manager client ID for MQTT authentication (required)  |
-| `--client-key`   | —       | Manager client key for MQTT authentication (required) |
-| `--mqtt-qos`     | `0`     | MQTT QoS level (0–2)                                  |
-| `--mqtt-timeout` | `30s`   | Broker operation timeout                              |
+| Flag             | Default | Description                                          |
+| ---------------- | ------- | ---------------------------------------------------- |
+| `--mqtt-address` | —       | MQTT broker URL (required, e.g. `tcp://mqtt:1883`)   |
+| `--tenant-id`    | —       | Atom domain / tenant ID (required)                   |
+| `--channel-id`   | —       | Atom channel ID (required)                           |
+| `--entity-id`    | —       | Manager entity ID for MQTT authentication (required) |
+| `--api-key`      | —       | Manager API key for MQTT authentication (required)   |
+| `--mqtt-qos`     | `0`     | MQTT QoS level (0–2)                                 |
+| `--mqtt-timeout` | `30s`   | Broker operation timeout                             |
 
 ### Proplet Monitoring Flags
 
@@ -84,10 +84,10 @@ Set `imagePullPolicy: Never` in `config/manager/manager.yaml` when using a local
 ```bash
 go run ./cmd/main.go \
   --mqtt-address="tcp://localhost:1883" \
-  --domain-id="<domain-id>" \
+  --tenant-id="<tenant-id>" \
   --channel-id="<channel-id>" \
-  --client-id="<manager-client-id>" \
-  --client-key="<manager-client-key>" \
+  --entity-id="<manager-entity-id>" \
+  --api-key="<manager-api-key>" \
   --metrics-secure=false
 ```
 
@@ -97,16 +97,16 @@ The operator uses the current `kubectl` context for cluster access.
 
 The operator requires a `ClusterRole` with the following permissions:
 
-| API Group                                 | Resources                                                               | Verbs                                           |
-| ----------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------- |
-| `""` (core)                               | `configmaps`                                                            | create, delete, get, list, patch, update        |
-| `""` (core)                               | `pods`                                                                  | get, list                                       |
-| `""` (core)                               | `secrets`                                                               | get                                             |
-| `apps`                                    | `deployments`                                                           | create, delete, get, list, patch, update, watch |
-| `batch`                                   | `jobs`                                                                  | create, delete, get, list, patch, update, watch |
-| `propeller.propeller.abstractmachines.fr` | `tasks`, `proplets`, `propellerjobs`, `federatedjobs`, `trainingrounds` | create, delete, get, list, patch, update, watch |
-| `propeller.propeller.abstractmachines.fr` | `*/status`                                                              | get, patch, update                              |
-| `propeller.propeller.abstractmachines.fr` | `*/finalizers`                                                          | update                                          |
+| API Group                        | Resources                                                               | Verbs                                           |
+| -------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------- |
+| `""` (core)                      | `configmaps`                                                            | create, delete, get, list, patch, update        |
+| `""` (core)                      | `pods`                                                                  | get, list                                       |
+| `""` (core)                      | `secrets`                                                               | get                                             |
+| `apps`                           | `deployments`                                                           | create, delete, get, list, patch, update, watch |
+| `batch`                          | `jobs`                                                                  | create, delete, get, list, patch, update, watch |
+| `propeller.propeller.absmach.eu` | `tasks`, `proplets`, `propellerjobs`, `federatedjobs`, `trainingrounds` | create, delete, get, list, patch, update, watch |
+| `propeller.propeller.absmach.eu` | `*/status`                                                              | get, patch, update                              |
+| `propeller.propeller.absmach.eu` | `*/finalizers`                                                          | update                                          |
 
 ### Container Security
 
@@ -144,3 +144,104 @@ make setup-test-e2e   # creates a Kind cluster
 make test-e2e         # runs Ginkgo e2e suite
 make cleanup-test-e2e # tears down the Kind cluster
 ```
+
+### Sample Configurations
+
+Sample YAML files covering all CRDs are in `config/samples/`:
+
+| File                                 | CRD                  | Description                                                                                                                        |
+| ------------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `propeller_v1_proplet.yaml`          | Proplet (k8s)        | K8s-backed proplet managed as a Deployment                                                                                         |
+| `propeller_v1_proplet_external.yaml` | Proplet (external)   | External device proplet via MQTT                                                                                                   |
+| `propeller_v1_task.yaml`             | Task (file)          | WASM file dispatched via MQTT                                                                                                      |
+| `propeller_v1_task_with_image.yaml`  | Task (registry)      | WASM OCI image dispatched via MQTT                                                                                                 |
+| `propeller_v1_task_k8s_job.yaml`     | Task (k8s Job)       | Container image run as K8s Job (referenced in `kustomization.yaml` but not yet shipped — create one from the inline example below) |
+| `propeller_v1_task_broadcast.yaml`   | Task (broadcast)     | WASM sent to all proplets                                                                                                          |
+| `propeller_v1_task_recurring.yaml`   | Task (cron)          | Cron-scheduled recurring task                                                                                                      |
+| `propeller_v1_task_monitoring.yaml`  | Task (monitoring)    | Task with metrics collection                                                                                                       |
+| `propeller_v1_task_dag_a.yaml`       | Task (DAG target)    | DAG dependency target                                                                                                              |
+| `propeller_v1_task_dag.yaml`         | Task (DAG dependent) | Task with dependsOn                                                                                                                |
+| `propeller_v1_propellerjob.yaml`     | PropellerJob         | Batch of parallel tasks                                                                                                            |
+| `propeller_v1_federatedjob.yaml`     | FederatedJob         | Multi-round FL experiment                                                                                                          |
+
+### E2E Tests
+
+The operator ships with a Ginkgo-based e2e test suite. Two modes are available:
+
+```bash
+# Kind (creates a temporary cluster automatically)
+make test-e2e
+
+# k3d (uses your existing k3d cluster)
+make test-e2e-k3d
+```
+
+### Manual Testing on k3d
+
+1. Create a k3d cluster:
+
+   ```bash
+   k3d cluster create propeller
+   ```
+
+2. Install CRDs:
+
+   ```bash
+   make install
+   ```
+
+3. Start the operator:
+
+   ```bash
+   make run ARGS="--mqtt-address='tcp://your-mqtt:1883' \
+     --tenant-id='<tenant>' \
+     --channel-id='<channel>' \
+     --entity-id='<entity>' \
+     --api-key='<api-key>'"
+   ```
+
+4. Create a proplet and run a task:
+
+   ```bash
+   # k8s proplet
+   kubectl apply -f config/samples/propeller_v1_proplet.yaml
+
+   # WASM task via MQTT
+   kubectl apply -f config/samples/propeller_v1_task.yaml
+
+   # Container task via K8s Job — if the sample file is missing, create inline:
+   cat <<EOF | kubectl apply -f -
+   apiVersion: propeller.propeller.absmach.eu/v1
+   kind: Task
+   metadata:
+   name: k8s-container-task
+   spec:
+   name: hello-k8s
+   imageUrl: alpine:latest
+   cliArgs: ["echo", "hello from propeller k8s job"]
+   propletSelector:
+    matchLabels:
+      type: k8s
+   EOF
+
+   # Broadcast task
+   kubectl apply -f config/samples/propeller_v1_task_broadcast.yaml
+
+   # PropellerJob (parallel batch)
+   kubectl apply -f config/samples/propeller_v1_propellerjob.yaml
+
+   # FederatedJob (FL experiment)
+   kubectl apply -f config/samples/propeller_v1_federatedjob.yaml
+   ```
+
+5. Watch results:
+
+   ```bash
+   kubectl get proplets,tasks,pjob,federatedjob,trainingrounds -w
+   ```
+
+6. Cleanup:
+
+   ```bash
+   k3d cluster delete propeller
+   ```
