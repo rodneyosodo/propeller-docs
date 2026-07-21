@@ -438,7 +438,7 @@ Your output should look like this:
 }
 ```
 
-The `proplet_id` field in alive messages carries the proplet's `entity_id`. The operator matches this value against the `spec.connectionConfig.clientId` field in `Proplet` CRs to identify which Proplet a message belongs to.
+The `proplet_id` field in alive messages carries the proplet's `entity_id`. The operator matches this value against the `spec.connectionConfig.entityId` field in `Proplet` CRs to identify which Proplet a message belongs to.
 
 ## Step 7 — Stop the Docker Propeller Manager
 
@@ -469,7 +469,7 @@ Open `config/manager/manager.yaml` and replace the placeholder values in the `ar
 ```yaml
 args:
   - --leader-elect
-  - --health-probe-bind-address=:8081
+  - --health-probe-bind-address=:8181
   - --mqtt-address=tcp://host.k3d.internal:1883
   - --mqtt-qos=2
   - --mqtt-timeout=30s
@@ -598,7 +598,7 @@ Your output should look like this:
 
 ## Step 9 — Create an External Proplet
 
-Register the running docker proplet as an external Proplet CRD. The `spec.connectionConfig.clientId` must match the `proplet_id` the proplet sends in alive messages (verified in step 6 to be the proplet's `entity_id`). See the [Proplet spec reference](/k8s/features#proplet-spec-reference) for all available fields.
+Register the running docker proplet as an external Proplet CRD. The `spec.connectionConfig.entityId` must match the `proplet_id` the proplet sends in alive messages (verified in step 6 to be the proplet's `entity_id`). See the [Proplet spec reference](/k8s/features#proplet-spec-reference) for all available fields.
 
 ```bash
 kubectl apply -n propeller-workloads -f - <<'EOF'
@@ -615,10 +615,10 @@ spec:
       - wasmtime
   connectionConfig:
     mqttAddress: "tcp://localhost:1883"
-    domainId: "3053156a-1994-4776-9e18-8c5d8883647c"
+    tenantId: "3053156a-1994-4776-9e18-8c5d8883647c"
     channelId: "c19ded40-eeec-448e-86e9-42f490c766a4"
-    clientId: "b64502f0-25bc-4926-8fbc-ad508f75d96c"
-    clientKey: "3c905d3c-845b-4b9e-8c51-7ab9a2403163"
+    entityId: "b64502f0-25bc-4926-8fbc-ad508f75d96c"
+    apiKey: "3c905d3c-845b-4b9e-8c51-7ab9a2403163"
     mqttQos: 2
     mqttTimeout: 30s
 EOF
@@ -630,7 +630,7 @@ Your output should look like this:
 proplet.propeller.propeller.absmach.eu/docker-proplet created
 ```
 
-> Replace `domainId`, `channelId`, `clientId`, and `clientKey` with your provisioned values.
+> Replace `tenantId`, `channelId`, `entityId`, and `apiKey` with your provisioned values.
 
 The proplet publishes an alive heartbeat every 10 seconds. Wait up to 15 seconds, then check the Proplet status:
 
@@ -658,14 +658,14 @@ Name:         docker-proplet
 Namespace:    propeller-workloads
 ...
 Spec:
-  Connection Config:
-    Channel Id:    c19ded40-eeec-448e-86e9-42f490c766a4
-    Client Id:     b64502f0-25bc-4926-8fbc-ad508f75d96c
-    Client Key:    3c905d3c-845b-4b9e-8c51-7ab9a2403163
-    Domain Id:     3053156a-1994-4776-9e18-8c5d8883647c
-    Mqtt Address:  tcp://localhost:1883
-    Mqtt Qos:      2
-    Mqtt Timeout:  30s
+    Connection Config:
+      Channel Id:     c19ded40-eeec-448e-86e9-42f490c766a4
+      Entity Id:      b64502f0-25bc-4926-8fbc-ad508f75d96c
+      Api Key:        3c905d3c-845b-4b9e-8c51-7ab9a2403163
+      Tenant Id:      3053156a-1994-4776-9e18-8c5d8883647c
+      Mqtt Address:   tcp://localhost:1883
+      Mqtt Qos:       2
+      Mqtt Timeout:   30s
   External:
     Capabilities:
       wasm
@@ -705,10 +705,10 @@ The table below lists common fields. For the complete specification, see the [fe
 | `external.deviceType`          | string   | No             | Device label for scheduling (e.g. `raspberry-pi-4`) |
 | `external.capabilities`        | []string | No             | Capabilities advertised for task matching           |
 | `connectionConfig.mqttAddress` | string   | Yes            | Broker URL (e.g. `tcp://mqtt:1883`)                 |
-| `connectionConfig.domainId`    | string   | Yes            | Atom domain ID                                      |
+| `connectionConfig.tenantId`    | string   | Yes            | Atom tenant ID                                      |
 | `connectionConfig.channelId`   | string   | Yes            | Atom channel ID                                     |
-| `connectionConfig.clientId`    | string   | Yes            | Atom client credential ID                           |
-| `connectionConfig.clientKey`   | string   | No\*           | Atom client secret (inline)                         |
+| `connectionConfig.entityId`    | string   | Yes            | Atom entity credential ID                           |
+| `connectionConfig.apiKey`      | string   | No\*           | Atom API key (inline)                               |
 
 ### Proplet Status Reference
 
