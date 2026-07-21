@@ -244,29 +244,18 @@ If you're curious about the internals or need to debug issues, here's how the Pr
 
 The Proxy runs two goroutines that communicate via channels:
 
-**HTTP Stream**: Handles registry communication. When a module request arrives, it authenticates with the registry, resolves the OCI manifest, downloads the WASM layer, and chunks it. Limits concurrent downloads to 50 to prevent overwhelming the registry.
+**Registry Stream**: Handles registry communication via ORAS (OCI Registry as Storage). When a module request arrives, it authenticates with the registry, resolves the OCI manifest, downloads the WASM layer, and chunks it. Limits concurrent downloads to 50 to prevent overwhelming the registry.
 
-**MQTT Stream**: Takes chunks from the HTTP stream and publishes them to MQTT. Tracks which chunks have been sent for each module and logs completion.
+**MQTT Stream**: Takes chunks from the Registry stream and publishes them to MQTT. Tracks which chunks have been sent for each module and logs completion.
 
 The diagram below shows the internal architecture of the Proxy, illustrating how these two streams interact:
 
 ![Proxy Architecture](./images/proxy/architecture.svg)
 
-### OpenTelemetry Tracing
-
-The Proxy supports distributed tracing via OpenTelemetry. When configured, it creates spans for registry fetches, chunking, and MQTT delivery operations, propagating trace context across service boundaries.
-
-| Variable              | Description                                      | Default   |
-| --------------------- | ------------------------------------------------ | --------- |
-| `PROXY_OTEL_ENABLED`  | Enable OpenTelemetry tracing                     | `false`   |
-| `PROXY_OTEL_ENDPOINT` | OTLP HTTP endpoint for trace export              | —         |
-
-Trace context is propagated via `traceparent` and `baggage` headers in HTTP requests and through MQTT application messages.
-
 ### MQTT Topics Used
 
-| Topic Pattern                             | Direction | Purpose                                |
-| ----------------------------------------- | --------- | -------------------------------------- |
+| Topic Pattern                                   | Direction | Purpose                                |
+| ----------------------------------------------- | --------- | -------------------------------------- |
 | `m/{tenant_id}/c/{channel_id}/registry/proplet` | Subscribe | Receives module requests from Proplets |
 | `m/{tenant_id}/c/{channel_id}/registry/server`  | Publish   | Sends chunks back to Proplets          |
 

@@ -211,6 +211,23 @@ make addition
 
 This compiles the example to WebAssembly format. The compiled `.wasm` file is located in the `build` directory.
 
+### Building the Plugin SDK Crates
+
+Propeller includes two Rust crate SDKs for extending behaviour via WebAssembly plugins:
+
+- `crates/propeller-plugin-sdk` — SDK for writing Manager plugins
+- `crates/propeller-proplet-plugin-sdk` — SDK for writing Proplet plugins
+
+Build both with:
+
+```bash
+cargo build --release --workspace --manifest-path crates/Cargo.toml
+```
+
+For authoring plugins, see the [Plugins](/plugins) documentation and the [plugin-auth](https://github.com/absmach/propeller/tree/main/examples/plugin-auth) and [proplet-plugin-example](https://github.com/absmach/propeller/tree/main/examples/proplet-plugin-example) examples.
+
+### Testing Examples
+
 To test the compiled Wasm example locally with Wasmtime (requires Wasmtime installed):
 
 ```bash
@@ -336,24 +353,16 @@ Example output:
 
 ```bash
 docker compose -f docker/compose.yaml --env-file docker/.env up -d
-[+] Running 17/17
- ✔ Container atom-db                 Started                                                                                        2.5s
- ✔ Container atom-redis              Started                                                                                        2.1s
- ✔ Container atom-jaeger             Started                                                                                        3.0s
- ✔ Container atom-http               Started                                                                                        5.1s
- ✔ Container atom-grpc               Started                                                                                        5.2s
- ✔ Container atom-domains-db         Started                                                                                        2.8s
- ✔ Container atom-domains            Started                                                                                        5.0s
- ✔ Container atom-policies-db        Started                                                                                        3.0s
- ✔ Container atom-policies           Started                                                                                        5.4s
- ✔ Container atom-tokens             Started                                                                                        5.3s
- ✔ Container atom-providers          Started                                                                                        5.6s
- ✔ Container fluxmq-node1            Started                                                                                        5.9s
- ✔ Container fluxmq-node2            Started                                                                                        6.1s
- ✔ Container fluxmq-node3            Started                                                                                        6.0s
- ✔ Container fluxmq-auth             Started                                                                                        5.5s
- ✔ Container base-net                Created                                                                                        0.1s
- ✔ Container nginx                   Started                                                                                        6.5s
+[+] Running 9/9
+ ✔ Network propeller-base-net              Created                                                                                  0.1s
+ ✔ Volume propeller-atom-db-volume         Created                                                                                  0.1s
+ ✔ Volume propeller-fluxmq-node1-volume    Created                                                                                  0.1s
+ ✔ Container propeller-atom-db             Started                                                                                  2.5s
+ ✔ Container propeller-atom                Started                                                                                  5.1s
+ ✔ Container propeller-atom-ui             Started                                                                                  5.3s
+ ✔ Container propeller-fluxmq-auth         Started                                                                                  5.5s
+ ✔ Container propeller-fluxmq-node1        Started                                                                                  5.9s
+ ✔ Container propeller-nginx               Started                                                                                  6.5s
 ```
 
 - Docker must be installed and running

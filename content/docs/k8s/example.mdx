@@ -159,11 +159,11 @@ Downloading sigs.k8s.io/kustomize/kustomize/v5@v5.6.0
 go: downloading sigs.k8s.io/kustomize/kustomize/v5 v5.6.0
 ...
 ./bin/kustomize build config/crd | kubectl apply -f -
-customresourcedefinition.apiextensions.k8s.io/federatedjobs.propeller.propeller.abstractmachines.fr created
-customresourcedefinition.apiextensions.k8s.io/propellerjobs.propeller.propeller.abstractmachines.fr created
-customresourcedefinition.apiextensions.k8s.io/proplets.propeller.propeller.abstractmachines.fr created
-customresourcedefinition.apiextensions.k8s.io/tasks.propeller.propeller.abstractmachines.fr created
-customresourcedefinition.apiextensions.k8s.io/trainingrounds.propeller.propeller.abstractmachines.fr created
+customresourcedefinition.apiextensions.k8s.io/federatedjobs.propeller.propeller.absmach.eu created
+customresourcedefinition.apiextensions.k8s.io/propellerjobs.propeller.propeller.absmach.eu created
+customresourcedefinition.apiextensions.k8s.io/proplets.propeller.propeller.absmach.eu created
+customresourcedefinition.apiextensions.k8s.io/tasks.propeller.propeller.absmach.eu created
+customresourcedefinition.apiextensions.k8s.io/trainingrounds.propeller.propeller.absmach.eu created
 ```
 
 All five CRDs are now registered with the Kubernetes API server. See the [CRD reference](/k8s/operator#custom-resource-definitions) for details on each resource type.
@@ -194,21 +194,13 @@ make start-all
 Your output should look like this:
 
 ```bash
- Container propeller-base-spicedb-db Started
- Container propeller-base-auth-redis Started
- Container propeller-base-users-db Started
- Container propeller-base-channels-db Started
- Container propeller-base-clients-db Started
- Container propeller-base-fluxmq-node1 Started
- Container propeller-base-fluxmq-node2 Started
- Container propeller-base-fluxmq-node3 Started
- Container propeller-base-fluxmq-auth Started
- Container propeller-base-nginx Started
- Container propeller-base-users Started
- Container propeller-base-channels Started
- Container propeller-base-clients Started
- Container propeller-base-auth Started
- Container propeller-base-domains Started
+ Container propeller-atom-db Started
+ Container propeller-atom Started
+ Container propeller-atom-ui Started
+ Container propeller-fluxmq-auth Started
+ Container propeller-fluxmq-node1 Started
+ Container propeller-nginx Started
+ Container propeller-jaeger Started
  Container propeller-manager Starting
  Container propeller-proxy Starting
  Container propeller-proplet Starting
@@ -229,23 +221,13 @@ Your output should look like this:
 propeller-proplet                Up 15 seconds (healthy)
 propeller-proxy                  Up 15 seconds
 propeller-manager                Up 15 seconds
-propeller-base-nginx             Up 37 seconds
-propeller-base-clients           Up 35 seconds
-propeller-base-channels          Up 35 seconds
-propeller-base-users             Up 33 seconds
-propeller-base-auth              Up 30 seconds
-propeller-base-domains           Up 28 seconds
-propeller-base-fluxmq-node1      Up 37 seconds
-propeller-base-fluxmq-node2      Up 37 seconds
-propeller-base-fluxmq-node3      Up 37 seconds
-propeller-base-fluxmq-auth       Up 37 seconds
-propeller-base-spicedb           Up 37 seconds
-propeller-base-users-db          Up 37 seconds
-propeller-base-channels-db       Up 37 seconds
-propeller-base-clients-db        Up 37 seconds
-propeller-base-auth-db           Up 37 seconds
-propeller-base-auth-redis        Up 37 seconds
-propeller-base-jaeger            Up 37 seconds
+propeller-nginx                  Up 37 seconds
+propeller-atom                   Up 35 seconds
+propeller-atom-ui                Up 35 seconds
+propeller-atom-db                Up 37 seconds
+propeller-fluxmq-node1           Up 37 seconds
+propeller-fluxmq-auth            Up 37 seconds
+propeller-jaeger                 Up 37 seconds
 ```
 
 > The propeller-manager, propeller-proplet, and propeller-proxy containers start but will fail to connect until you provision credentials. That is expected at this stage.
@@ -491,10 +473,10 @@ args:
   - --mqtt-address=tcp://host.k3d.internal:1883
   - --mqtt-qos=2
   - --mqtt-timeout=30s
-  - --domain-id=3053156a-1994-4776-9e18-8c5d8883647c
+  - --tenant-id=3053156a-1994-4776-9e18-8c5d8883647c
   - --channel-id=c19ded40-eeec-448e-86e9-42f490c766a4
-  - --client-id=0a96e62c-da03-45eb-9699-b7d8dfa843c9
-  - --client-key=8bd64edf-6cec-4cd8-aebd-a8e9695c8d90
+  - --entity-id=0a96e62c-da03-45eb-9699-b7d8dfa843c9
+  - --api-key=8bd64edf-6cec-4cd8-aebd-a8e9695c8d90
 ```
 
 Also add `imagePullPolicy: Never` immediately after the `image:` line so k3d uses the locally-loaded image without trying to pull it from a registry:
@@ -569,11 +551,11 @@ Your output should look like this:
 cd config/manager && ./bin/kustomize edit set image controller=propeller-k8s-operator:latest
 ./bin/kustomize build config/default | kubectl apply -f -
 namespace/propeller-k8s-operator-system created
-customresourcedefinition.apiextensions.k8s.io/federatedjobs.propeller.propeller.abstractmachines.fr unchanged
-customresourcedefinition.apiextensions.k8s.io/propellerjobs.propeller.propeller.abstractmachines.fr unchanged
-customresourcedefinition.apiextensions.k8s.io/proplets.propeller.propeller.abstractmachines.fr unchanged
-customresourcedefinition.apiextensions.k8s.io/tasks.propeller.propeller.abstractmachines.fr unchanged
-customresourcedefinition.apiextensions.k8s.io/trainingrounds.propeller.propeller.abstractmachines.fr unchanged
+customresourcedefinition.apiextensions.k8s.io/federatedjobs.propeller.propeller.absmach.eu unchanged
+customresourcedefinition.apiextensions.k8s.io/propellerjobs.propeller.propeller.absmach.eu unchanged
+customresourcedefinition.apiextensions.k8s.io/proplets.propeller.propeller.absmach.eu unchanged
+customresourcedefinition.apiextensions.k8s.io/tasks.propeller.propeller.absmach.eu unchanged
+customresourcedefinition.apiextensions.k8s.io/trainingrounds.propeller.propeller.absmach.eu unchanged
 serviceaccount/propeller-k8s-operator-controller-manager created
 ...
 deployment.apps/propeller-k8s-operator-controller-manager created
@@ -620,7 +602,7 @@ Register the running docker proplet as an external Proplet CRD. The `spec.connec
 
 ```bash
 kubectl apply -n propeller-workloads -f - <<'EOF'
-apiVersion: propeller.propeller.abstractmachines.fr/v1
+apiVersion: propeller.propeller.absmach.eu/v1
 kind: Proplet
 metadata:
   name: docker-proplet
@@ -645,7 +627,7 @@ EOF
 Your output should look like this:
 
 ```bash
-proplet.propeller.propeller.abstractmachines.fr/docker-proplet created
+proplet.propeller.propeller.absmach.eu/docker-proplet created
 ```
 
 > Replace `domainId`, `channelId`, `clientId`, and `clientKey` with your provisioned values.
@@ -744,7 +726,7 @@ Create a Task that targets the docker proplet. This uses the addition WASM modul
 
 ```bash
 kubectl apply -n propeller-workloads -f - <<'EOF'
-apiVersion: propeller.propeller.abstractmachines.fr/v1
+apiVersion: propeller.propeller.absmach.eu/v1
 kind: Task
 metadata:
   name: addition-wasm
@@ -764,7 +746,7 @@ EOF
 Your output should look like this:
 
 ```bash
-task.propeller.propeller.abstractmachines.fr/addition-wasm created
+task.propeller.propeller.absmach.eu/addition-wasm created
 ```
 
 Check task status:

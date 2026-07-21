@@ -15,8 +15,7 @@ The `propeller-cli` binary is installed to `$GOBIN` by `make install`. All comma
 | -------------------- | ----- | ----------------------- | ----------------------------------- |
 | `--manager-url`      | `-m`  | `http://localhost:7070` | URL of the Manager HTTP API         |
 | `--tls-verification` | `-v`  | —                       | Enable TLS certificate verification |
-| `--atom-url`         | `-a`  | `http://localhost:9000` | Atom base service URL               |
-| `--content-type`     | `-t`  | —                       | HTTP Content-Type header value      |
+| `--atom-url`         | `-a`  | `http://localhost:8080` | Atom base service URL               |
 
 ### Tasks
 
@@ -79,7 +78,9 @@ propeller-cli provision [--file-name <path>]
 | `job_id`             | string (UUID)   | ID of the job this task belongs to.                                                                                             |
 | `results`            | any             | Output stored after the task completes successfully.                                                                            |
 | `error`              | string          | Error message if the task failed.                                                                                               |
+| `broadcast`          | boolean         | If `true`, send the task to all available proplets simultaneously instead of a single selected one.                             |
 | `monitoring_profile` | object          | Per-task monitoring configuration (see [Monitoring](monitoring)).                                                               |
+| `metadata`           | object          | Free-form JSON key-value metadata attached to the task (max 1 MB serialized).                                                   |
 | `schedule`           | string          | Cron expression for recurring execution (e.g. `"0 * * * *"`).                                                                   |
 | `timezone`           | string          | Timezone for cron schedule evaluation (default: `UTC`).                                                                         |
 | `is_recurring`       | boolean         | `true` if a `schedule` is set.                                                                                                  |
