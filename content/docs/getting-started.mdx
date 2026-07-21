@@ -7,13 +7,13 @@ This guide walks you through installing Propeller and running your first WASM wo
 
 ## Prerequisites
 
-| Tool                                       | Version | Purpose                      |
-| ------------------------------------------ | ------- | ---------------------------- |
-| [Go](https://go.dev/doc/install)           | 1.26.0+ | Building Propeller binaries  |
-| [Rust](https://rustup.rs/)                 | Latest  | Building the proplet runtime |
-| [Docker](https://docs.docker.com/)         | 20.10+  | Running base services (Atom, FluxMQ)  |
-| [Make](https://www.gnu.org/software/make/) | 3.81+   | Build automation             |
-| [Mosquitto Tools](https://mosquitto.org/)  | Latest  | MQTT CLI utilities           |
+| Tool                                       | Version | Purpose                              |
+| ------------------------------------------ | ------- | ------------------------------------ |
+| [Go](https://go.dev/doc/install)           | 1.26.0+ | Building Propeller binaries          |
+| [Rust](https://rustup.rs/)                 | Latest  | Building the proplet runtime         |
+| [Docker](https://docs.docker.com/)         | 20.10+  | Running base services (Atom, FluxMQ) |
+| [Make](https://www.gnu.org/software/make/) | 3.81+   | Build automation                     |
+| [Mosquitto Tools](https://mosquitto.org/)  | Latest  | MQTT CLI utilities                   |
 
 These are only needed if you plan to build WASM modules locally:
 
@@ -200,8 +200,8 @@ channel_id = "8c6e1e6c-fc89-43b4-b00b-884a690c7419"
 
 [proxy]
 tenant_id = "182c0907-002c-4bfd-8bf3-e4f40c58dde6"
-entity_id = "fa407362-9c5f-41b8-9a09-9d0c0b039287"
-api_key = "991c4d03-2f2c-4ba5-97a6-45bead85457e"
+entity_id = "a3d7e901-2345-6789-abcd-ef0123456789"
+api_key = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 channel_id = "8c6e1e6c-fc89-43b4-b00b-884a690c7419"
 ```
 
@@ -530,6 +530,21 @@ After copying the updated `config.toml` into `docker/`, restart only the Propell
 make stop-propeller
 make start-propeller
 ```
+
+### Adding or Replacing a Proxy Entity
+
+If your `config.toml` was created before the proxy was part of Propeller, or you need to regenerate the proxy credentials, use the `add-proxy` subcommand:
+
+```bash
+propeller-cli provision add-proxy
+```
+
+This command:
+
+1. Reads your existing `config.toml` to extract `tenant_id` and `channel_id`
+2. Creates a new Atom service entity with an API key for the proxy
+3. Connects the entity to the existing channel
+4. Updates the `[proxy]` section in your `config.toml`
 
 ## Postman Collection
 

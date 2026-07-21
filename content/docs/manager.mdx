@@ -126,8 +126,8 @@ channel_id = "9856d353-88d3-4eb6-82bd-117eadf69c74"
 
 [proxy]
 tenant_id = "73cc3c8f-2c6c-4c08-903b-f1f426d5d9bf"
-entity_id = "ec182939-7940-4b25-869e-47b245ddec09"
-api_key = "21076163-f7b9-439e-94b9-f17f69ce3d28"
+entity_id = "f3c4d5e6-a7b8-9012-cdef-345678901234"
+api_key = "87654321-4321-6543-2109-876543210987"
 channel_id = "9856d353-88d3-4eb6-82bd-117eadf69c74"
 ```
 
@@ -135,9 +135,9 @@ Each section contains:
 
 | Field        | Purpose                                          |
 | ------------ | ------------------------------------------------ |
-| `tenant_id` | Atom tenant for multi-tenant isolation          |
-| `entity_id` | Unique identifier for MQTT entity identification |
-| `api_key`   | Secret API key for MQTT authentication          |
+| `tenant_id`  | Atom tenant for multi-tenant isolation           |
+| `entity_id`  | Unique identifier for MQTT entity identification |
+| `api_key`    | Secret API key for MQTT authentication           |
 | `channel_id` | Shared channel for Manager-Proplet communication |
 
 The Manager, Proplets, and Proxy all share the same `tenant_id` and `channel_id` but have unique `entity_id`/`api_key` pairs. This allows them to communicate securely on a shared channel while maintaining distinct identities.

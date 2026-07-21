@@ -166,14 +166,11 @@ Sample YAML files covering all CRDs are in `config/samples/`:
 
 ### E2E Tests
 
-The operator ships with a Ginkgo-based e2e test suite. Two modes are available:
+The operator ships with a Ginkgo-based e2e test suite that uses Kind:
 
 ```bash
 # Kind (creates a temporary cluster automatically)
 make test-e2e
-
-# k3d (uses your existing k3d cluster)
-make test-e2e-k3d
 ```
 
 ### Manual Testing on k3d
