@@ -1,0 +1,61 @@
+---
+title: Compute
+description: Run a compute-intensive WASM task via the Kubernetes operator
+---
+
+This example runs the CPU-intensive [compute WASM module](/examples/compute) through the Propeller Kubernetes operator. It performs an O(n⁵) calculation inside five nested loops.
+
+## Prerequisites
+
+The operator must be deployed and a Proplet registered. Follow the [end-to-end example](/k8s/example) first if you have not done that.
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make compute
+```
+
+## Apply the Task
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/compute.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: compute-example
+spec:
+  name: compute-example
+  functionName: compute
+  file: "${WASM_B64}"
+  inputs:
+    - "50"
+  propletSelector:
+    propletId: "k8s-proplet"
+EOF
+```
+
+## Watch and Verify
+
+```bash
+kubectl get task compute-example -n propeller-workloads -w
+```
+
+Wait for the phase to become `completed`:
+
+```bash
+kubectl get task compute-example -n propeller-workloads \
+  -o jsonpath='{.status.results}'
+```
+
+Expected result: `1377515305`
+
+## Reference
+
+| Field          | Value                   |
+| -------------- | ----------------------- |
+| `functionName` | `compute`               |
+| `inputs`       | `["50"]`                |
+| `daemon`       | `false`                 |
+| Proplet env    | none required           |

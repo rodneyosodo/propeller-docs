@@ -1,0 +1,70 @@
+---
+title: TEE / Confidential Computing
+description: Run encrypted WASM tasks via the Kubernetes operator
+---
+
+This runs the [addition example](/examples/tee) in encrypted mode through the Propeller Kubernetes operator, protecting code and data from the host OS.
+
+## Prerequisites
+
+The operator must be deployed and a Proplet registered. Follow the [end-to-end example](/k8s/example) first.
+
+## Proplet Configuration
+
+TEE mode requires a Key Broker Service URI and attestation agent config:
+
+```bash
+kubectl patch proplet k8s-proplet --type=merge -p '{"spec":{"k8s":{"env":{"kbsUri":"http://kbs.example.com:8082","aaConfigPath":"/etc/default/proplet.toml"}}}}'
+```
+
+> **Note:** This requires real TEE hardware (Intel TDX or AMD SEV-SNP). Without it, the proplet's stub HAL path will be exercised but no real attestation will occur. The proplet logs will show `TDX=false, SEV=false` at startup.
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make addition
+```
+
+## Apply the Task
+
+The key difference is `encrypted: true`:
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/addition.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: tee-addition-example
+spec:
+  name: tee-addition-example
+  functionName: main
+  file: "${WASM_B64}"
+  encrypted: true
+  inputs:
+    - "10"
+    - "32"
+  propletSelector:
+    propletId: "k8s-proplet"
+EOF
+```
+
+## Watch and Verify
+
+```bash
+kubectl get task tee-addition-example -n propeller-workloads \
+  -o jsonpath='{.status.results}'
+```
+
+Expected result: `42`
+
+## Reference
+
+| Field          | Value                              |
+| -------------- | ---------------------------------- |
+| `functionName` | `main`                             |
+| `inputs`       | `["10", "32"]`                     |
+| `encrypted`    | `true`                             |
+| `daemon`       | `false`                            |
+| Proplet env    | `kbsUri`, `aaConfigPath`           |

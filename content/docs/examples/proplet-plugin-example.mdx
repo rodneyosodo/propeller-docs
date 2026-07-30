@@ -1,0 +1,52 @@
+---
+title: Proplet Plugin Example
+description: Example of a proplet-side lifecycle plugin
+---
+
+This example demonstrates a proplet-side plugin using the `propeller-proplet-plugin-sdk`. Unlike manager plugins (which run in the manager process), proplet plugins run inside the proplet and hook into the task lifecycle at the point of execution.
+
+The plugin exports four lifecycle hooks:
+
+- **`authorize`** — deny tasks with an empty name
+- **`enrich`** — forward environment variables to the task
+- **`on_task_start`** — log when a task begins
+- **`on_task_complete`** — log when a task finishes
+
+## Source Code
+
+The source code is available in the [examples/proplet-plugin-example](https://github.com/absmach/propeller/blob/main/examples/proplet-plugin-example) directory.
+
+<CodeFromSource
+  src="https://raw.githubusercontent.com/absmach/propeller/refs/heads/main/examples/proplet-plugin-example/src/lib.rs"
+  lang="rust"
+/>
+
+## Build
+
+```bash
+cd propeller
+make proplet-plugin-example
+```
+
+Your output should look like this:
+
+```bash
+mkdir -p build/proplet-plugins
+cd examples/proplet-plugin-example && cargo build --target wasm32-wasip2 --release
+cp examples/proplet-plugin-example/target/wasm32-wasip2/release/proplet_plugin_example.wasm build/proplet-plugins/proplet-plugin-example.wasm
+```
+
+## Use
+
+Place the compiled `.wasm` file in a directory the proplet can access and set:
+
+```bash
+export PROPLET_PLUGIN_DIR="/path/to/proplet-plugins"
+```
+
+On task execution, the proplet logs:
+
+```bash
+[example-plugin] task starting: <task-id>
+[example-plugin] task <task-id> finished (success=true)
+```

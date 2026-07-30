@@ -1,0 +1,70 @@
+---
+title: Attestation Test
+description: Run TEE attestation via the Kubernetes operator
+---
+
+This runs the [attestation-test WASM module](/examples/attestation-test) through the Propeller Kubernetes operator. It queries the Elastic HAL for platform info, generates a random nonce, and requests TEE attestation evidence.
+
+## Prerequisites
+
+The operator must be deployed and a Proplet registered. Follow the [end-to-end example](/k8s/example) first.
+
+## Proplet Configuration
+
+The attestation test needs HAL enabled. Patch your Proplet:
+
+```bash
+kubectl patch proplet k8s-proplet --type=merge -p '{"spec":{"k8s":{"env":{"halEnabled":true,"externalWasmRuntime":""}}}}'
+```
+
+Setting `externalWasmRuntime: ""` forces the proplet to use its built-in runtime (Wasmtime with HAL linker support).
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make attestation-test
+```
+
+## Apply the Task
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/attestation-test.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: attestation-example
+spec:
+  name: attestation-example
+  functionName: run
+  file: "${WASM_B64}"
+  propletSelector:
+    propletId: "k8s-proplet"
+EOF
+```
+
+## Watch and Verify
+
+```bash
+kubectl get task attestation-example -n propeller-workloads -w
+```
+
+Check the proplet logs for the attestation output:
+
+```bash
+kubectl logs -n propeller-workloads deployment/k8s-proplet | grep -i attestation
+```
+
+Expected output depends on the platform:
+
+- **TDX CVM:** evidence with measurement data (~863 bytes)
+- **No TEE (stub):** `evidence: {}` with `attestation_support: false`
+
+## Reference
+
+| Field          | Value                                    |
+| -------------- | ---------------------------------------- |
+| `functionName` | `run`                                    |
+| `daemon`       | `false`                                  |
+| Proplet env    | `halEnabled: true`, `externalWasmRuntime: ""` |

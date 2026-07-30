@@ -1,0 +1,63 @@
+---
+title: WASI HTTP
+description: Run the sample WASI HTTP server via the Kubernetes operator
+---
+
+This runs the [sample-wasi-http-rust](/examples/wasi-http) WASM module — an upstream Bytecode Alliance example implementing a `wasi:http/proxy` server with multiple routes — through the Propeller Kubernetes operator.
+
+## Prerequisites
+
+The operator must be deployed and a Proplet registered. Follow the [end-to-end example](/k8s/example) first.
+
+## Proplet Configuration
+
+The WASI HTTP server needs HTTP proxy enabled and the external runtime disabled (uses the proplet's built-in Wasmtime):
+
+```bash
+kubectl patch proplet k8s-proplet --type=merge -p '{"spec":{"k8s":{"env":{"httpEnabled":true,"externalWasmRuntime":""}}}}'
+```
+
+> **Known gap:** `PROPLET_HTTP_PROXY_PORT` is not yet exposed on the `Proplet` CRD's `k8s.env` block. The default port (8081) is used. Run this against an external proplet if you need to customize the proxy port.
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make http-greet-component
+```
+
+## Apply the Task
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/http-greet-component.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: wasi-http-example
+spec:
+  name: wasi-http-example
+  functionName: _start
+  file: "${WASM_B64}"
+  daemon: true
+  propletSelector:
+    propletId: "k8s-proplet"
+EOF
+```
+
+## Verify
+
+Test the server endpoints through the proplet's HTTP proxy:
+
+```bash
+curl http://localhost:8081/
+curl http://localhost:8081/echo -d 'hello'
+```
+
+## Reference
+
+| Field          | Value                                    |
+| -------------- | ---------------------------------------- |
+| `functionName` | `_start`                                 |
+| `daemon`       | `true`                                   |
+| Proplet env    | `httpEnabled: true`, `externalWasmRuntime: ""` |

@@ -1,0 +1,83 @@
+---
+title: Plugins
+description: Using Propeller manager and proplet plugins in Kubernetes
+---
+
+Plugins extend the Propeller manager and proplet with custom logic. Plugins are compiled WASM modules loaded at startup — they are not Kubernetes CRDs and do not run as pods. This page covers how to use the [plugin examples](/examples) in a K8s context.
+
+## Manager Plugins
+
+Manager plugins (auth, registry proxy) run in the operator process. They are configured via environment variables on the operator pod.
+
+### Auth Plugin
+
+Build the plugin:
+
+```bash
+cd propeller
+make plugin-auth
+```
+
+The plugin is at `propeller/build/plugins/plugin-auth.wasm`.
+
+Mount it into the operator pod and set `PROPELLER_PLUGIN_PATH`:
+
+```yaml
+# config/manager/manager.yaml additions
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          env:
+            - name: PROPELLER_PLUGIN_PATH
+              value: /plugins/plugin-auth.wasm
+          volumeMounts:
+            - name: plugins
+              mountPath: /plugins
+      volumes:
+        - name: plugins
+          configMap:
+            name: manager-plugins
+```
+
+Create a ConfigMap from the plugin binary:
+
+```bash
+kubectl create configmap manager-plugins \
+  --from-file=plugin-auth.wasm=propeller/build/plugins/plugin-auth.wasm
+```
+
+### Registry Proxy Plugin
+
+Same pattern — mount the plugin and set `PROPELLER_PLUGIN_PATH` and `PROPELLER_REGISTRY_MIRROR`:
+
+```yaml
+env:
+  - name: PROPELLER_PLUGIN_PATH
+    value: /plugins/plugin-proxy.wasm
+  - name: PROPELLER_REGISTRY_MIRROR
+    value: "mirror.corp.com"
+```
+
+## Proplet Plugins
+
+Proplet plugins (proplet-plugin-example) run in the proplet process. Mount the plugin binary into the proplet pod and set `PROPLET_PLUGIN_DIR`:
+
+```bash
+kubectl patch proplet k8s-proplet --type=merge -p '{"spec":{"k8s":{"pluginDir":"/plugins"}}}'
+```
+
+The operator passes `PROPLET_PLUGIN_DIR=/plugins` to the proplet container. Place the `.wasm` file at that path using an init container or a shared volume.
+
+## Plugin types compared
+
+|                    | Manager plugin                     | Proplet plugin                          |
+| ------------------ | ---------------------------------- | --------------------------------------- |
+| Runtime            | `wasm32-wasip1` (wasmtime)         | `wasm32-wasip2` (proplet SDK)           |
+| Build target       | `make plugin-auth`                 | `make proplet-plugin-example`           |
+| Env var            | `PROPELLER_PLUGIN_PATH`            | `PROPLET_PLUGIN_DIR`                    |
+| Lifecycle hooks    | `authorize`, `enrich`              | `authorize`, `enrich`, `on_task_start`, `on_task_complete` |
+| CRD field          | — (env var on operator pod)        | `k8s.pluginDir`                         |

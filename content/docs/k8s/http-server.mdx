@@ -1,0 +1,82 @@
+---
+title: HTTP Server
+description: Run a daemon HTTP server in WASM via the Kubernetes operator
+---
+
+This runs the [HTTP server WASM module](/examples/http-server) — a `wasi:http/proxy` component that serves HTTP on a configurable port — through the Propeller Kubernetes operator. This is a **daemon task** that runs indefinitely.
+
+## Prerequisites
+
+The operator must be deployed and a Proplet registered. Follow the [end-to-end example](/k8s/example) first.
+
+## Proplet Configuration
+
+Enable the WASI HTTP proxy:
+
+```bash
+kubectl patch proplet k8s-proplet --type=merge -p '{"spec":{"k8s":{"env":{"httpEnabled":true}}}}'
+```
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make http-server
+```
+
+## Apply the Task
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/http-server.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: http-server-example
+spec:
+  name: http-server-example
+  functionName: _start
+  file: "${WASM_B64}"
+  cliArgs:
+    - "--port"
+    - "8044"
+  daemon: true
+  propletSelector:
+    propletId: "k8s-proplet"
+EOF
+```
+
+## Verify
+
+A daemon task never reaches a terminal phase — it stays in `running`. Verify via proplet logs:
+
+```bash
+kubectl logs -n propeller-workloads deployment/k8s-proplet | grep "http-server"
+```
+
+To test the server, port-forward the proplet pod and curl it:
+
+```bash
+kubectl port-forward -n propeller-workloads pod/<proplet-pod> 8044:8044 &
+curl -iX GET "http://localhost:8044"
+curl -iX POST "http://localhost:8044/echo" -d "hello"
+```
+
+Expected responses:
+
+```bash
+# GET /
+Hello from proplet WASM HTTP server!
+
+# POST /echo
+hello
+```
+
+## Reference
+
+| Field          | Value                      |
+| -------------- | -------------------------- |
+| `functionName` | `_start`                   |
+| `cliArgs`      | `["--port", "8044"]`       |
+| `daemon`       | `true`                     |
+| Proplet env    | `httpEnabled: true`        |

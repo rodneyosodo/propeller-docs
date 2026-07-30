@@ -154,8 +154,7 @@ Sample YAML files covering all CRDs are in `config/samples/`:
 | `propeller_v1_proplet.yaml`          | Proplet (k8s)        | K8s-backed proplet managed as a Deployment                                                                                         |
 | `propeller_v1_proplet_external.yaml` | Proplet (external)   | External device proplet via MQTT                                                                                                   |
 | `propeller_v1_task.yaml`             | Task (file)          | WASM file dispatched via MQTT                                                                                                      |
-| `propeller_v1_task_with_image.yaml`  | Task (registry)      | WASM OCI image dispatched via MQTT                                                                                                 |
-| `propeller_v1_task_k8s_job.yaml`     | Task (k8s Job)       | Container image run as K8s Job (referenced in `kustomization.yaml` but not yet shipped — create one from the inline example below) |
+| `propeller_v1_task_with_image.yaml`  | Task (registry)      | WASM OCI image reference dispatched via MQTT (proplet fetches it via the registry proxy)                                           |
 | `propeller_v1_task_broadcast.yaml`   | Task (broadcast)     | WASM sent to all proplets                                                                                                          |
 | `propeller_v1_task_recurring.yaml`   | Task (cron)          | Cron-scheduled recurring task                                                                                                      |
 | `propeller_v1_task_monitoring.yaml`  | Task (monitoring)    | Task with metrics collection                                                                                                       |
@@ -163,6 +162,10 @@ Sample YAML files covering all CRDs are in `config/samples/`:
 | `propeller_v1_task_dag.yaml`         | Task (DAG dependent) | Task with dependsOn                                                                                                                |
 | `propeller_v1_propellerjob.yaml`     | PropellerJob         | Batch of parallel tasks                                                                                                            |
 | `propeller_v1_federatedjob.yaml`     | FederatedJob         | Multi-round FL experiment                                                                                                          |
+
+The operator repo also ships a sample per [WASM example](/k8s/examples) — `propeller_v1_task_compute.yaml`, `_string_input.yaml`, `_http_server.yaml`, `_http_client.yaml`, `_attestation_test.yaml`, `_hal_test.yaml`, `_tee.yaml`, `_filesystem.yaml`, `_wasi_http.yaml` — plus `propeller_v1_proplet_full.yaml` (every optional `k8s.env.*` flag enabled, for the feature-gated ones) and `propeller_v1_proplet_wasi_nn.yaml` (dedicated WASI-NN image). See [Running Other WASM Examples](/k8s/examples) for what each needs and the verified output.
+
+`propeller_v1_task_with_image.yaml` and `spec.imageUrl` generally need the registry proxy service running — `propeller_proxy_deployment.yaml` is a plain Deployment + Service for it (not a CRD; see [Running Other WASM Examples: Deploying the registry proxy](/k8s/examples#deploying-the-registry-proxy)).
 
 ### E2E Tests
 
@@ -206,20 +209,8 @@ make test-e2e
    # WASM task via MQTT
    kubectl apply -f config/samples/propeller_v1_task.yaml
 
-   # Container task via K8s Job — if the sample file is missing, create inline:
-   cat <<EOF | kubectl apply -f -
-   apiVersion: propeller.propeller.absmach.eu/v1
-   kind: Task
-   metadata:
-   name: k8s-container-task
-   spec:
-   name: hello-k8s
-   imageUrl: alpine:latest
-   cliArgs: ["echo", "hello from propeller k8s job"]
-   propletSelector:
-    matchLabels:
-      type: k8s
-   EOF
+   # WASM task via an OCI image reference (proplet fetches it via the registry proxy)
+   kubectl apply -f config/samples/propeller_v1_task_with_image.yaml
 
    # Broadcast task
    kubectl apply -f config/samples/propeller_v1_task_broadcast.yaml
