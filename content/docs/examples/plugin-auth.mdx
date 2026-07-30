@@ -1,0 +1,59 @@
+---
+title: Plugin — Auth
+description: Authorization plugin for the Propeller manager
+---
+
+The Auth plugin demonstrates how to extend the Propeller manager with custom authorization logic. It runs as a WASM plugin loaded by the manager and hooks into two lifecycle points:
+
+- **`authorize`** — validates whether a request is allowed based on the task name and user context
+- **`enrich`** — injects additional environment variables into the task before dispatch
+
+This plugin is compiled to `wasm32-wasip1` and loaded by the Propeller manager at startup via the `PROPELLER_PLUGIN_PATH` environment variable.
+
+## Source Code
+
+The source code is available in the [examples/plugin-auth](https://github.com/absmach/propeller/blob/main/examples/plugin-auth) directory.
+
+<CodeFromSource
+  src="https://raw.githubusercontent.com/absmach/propeller/refs/heads/main/examples/plugin-auth/src/lib.rs"
+  lang="rust"
+/>
+
+## Plugin Behaviour
+
+| Action    | Rule                                                                 |
+| --------- | -------------------------------------------------------------------- |
+| `create`  | Denied if `user_id` is empty                                         |
+| `start`   | Denied if `user_id` is empty, or if the task was created by a different user |
+| other     | Always allowed                                                        |
+
+The enrich handler injects `PROPELLER_PLUGIN_AUTHZ=plugin-auth` and `PROPELLER_CREATED_BY=<user_id>` into the task environment.
+
+## Build
+
+```bash
+cd propeller
+make plugin-auth
+```
+
+Your output should look like this:
+
+```bash
+mkdir -p build/plugins
+cd examples/plugin-auth && cargo build --target wasm32-wasip1 --release
+cp examples/plugin-auth/target/wasm32-wasip1/release/plugin_auth.wasm build/plugins/plugin-auth.wasm
+```
+
+## Use
+
+Place the compiled `.wasm` file in a directory the manager can access and set the environment variable:
+
+```bash
+export PROPELLER_PLUGIN_PATH="/path/to/plugins/plugin-auth.wasm"
+```
+
+On startup, the manager logs:
+
+```bash
+INFO Plugin loaded: plugin-auth (wasm32-wasip1)
+```

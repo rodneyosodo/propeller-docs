@@ -1,0 +1,48 @@
+---
+title: Plugin — Registry Proxy
+description: Registry mirror rewriting plugin for the Propeller manager
+---
+
+The Registry Proxy plugin rewrites OCI image references at request time so the proplet fetches WASM modules from a private registry mirror instead of the upstream registry. This is useful in air-gapped environments or when you want to cache and audit all WASM images used across your deployment.
+
+It only implements the `enrich` hook — it rewrites `image_url` on the task before the manager dispatches it.
+
+## Source Code
+
+The source code is available in the [examples/plugin-proxy](https://github.com/absmach/propeller/blob/main/examples/plugin-proxy) directory.
+
+<CodeFromSource
+  src="https://raw.githubusercontent.com/absmach/propeller/refs/heads/main/examples/plugin-proxy/src/lib.rs"
+  lang="rust"
+/>
+
+## Rewrite Rules
+
+| Original `imageUrl`                      | Mirror configured              | Result                                    |
+| ---------------------------------------- | ------------------------------ | ----------------------------------------- |
+| `ghcr.io/org/task:latest`                | `mirror.corp.com`              | `mirror.corp.com/org/task:latest`         |
+| `myimage:latest`                         | `mirror.corp.com`              | `mirror.corp.com/myimage:latest`          |
+| `mirror.corp.com/org/task:latest`        | `mirror.corp.com`              | `mirror.corp.com/org/task:latest` (no-op) |
+| `localhost:5000/org/task:latest`         | `mirror.corp.com`              | `mirror.corp.com/org/task:latest`         |
+
+If `PROPELLER_REGISTRY_MIRROR` is not set or empty, the plugin returns the image URL unchanged.
+
+## Build
+
+```bash
+cd propeller
+make plugin-proxy
+```
+
+## Use
+
+```bash
+export PROPELLER_PLUGIN_PATH="/path/to/plugins/plugin-proxy.wasm"
+export PROPELLER_REGISTRY_MIRROR="mirror.corp.com"
+```
+
+On startup, the manager logs:
+
+```bash
+INFO Plugin loaded: plugin-proxy (wasm32-wasip1)
+```
