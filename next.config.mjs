@@ -17,6 +17,9 @@ const config = {
   env: {
     NEXT_PUBLIC_BASE_PATH: BASE_PATH,
   },
+  experimental: {
+    useTypeScriptCli: true,
+  },
 };
 
 export default withMDX(config);
