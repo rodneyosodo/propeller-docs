@@ -1,0 +1,71 @@
+---
+title: Filesystem
+description: Access the filesystem from WASM via the Kubernetes operator
+---
+
+This runs the [filesystem WASM module](/examples/filesystem) — a WASI P1 module that writes a file to a preopened directory, reads it back, and prints the result — through the Propeller Kubernetes operator.
+
+## Prerequisites
+
+The operator must be deployed and a Proplet registered. Follow the [end-to-end example](/k8s/example) first.
+
+## Proplet Configuration
+
+The filesystem example needs `PROPLET_DIRS=/tmp` to preopen a directory for WASI access.
+
+> **Known gap:** `PROPLET_DIRS` is not yet exposed on the `Proplet` CRD's `k8s.env` block. This example cannot currently run against a `k8s`-type proplet without a code change. Run it against an `external` proplet instead, where you control the environment directly.
+
+### Alternative: Run Against an External Proplet
+
+If you have a Docker proplet registered, start it with:
+
+```bash
+docker run -d --name filesystem-proplet \
+  -e PROPLET_DIRS=/tmp \
+  -e PROPLET_ENTITY_ID=... \
+  -e PROPLET_API_KEY=... \
+  ghcr.io/absmach/propeller/proplet:latest
+```
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make filesystem
+```
+
+## Apply the Task
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/filesystem.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: filesystem-example
+spec:
+  name: filesystem-example
+  functionName: _start
+  file: "${WASM_B64}"
+  propletSelector:
+    propletId: "docker-proplet"
+EOF
+```
+
+## Watch and Verify
+
+```bash
+kubectl get task filesystem-example -n propeller-workloads \
+  -o jsonpath='{.status.results}'
+```
+
+Expected result includes "All filesystem operations succeeded".
+
+## Reference
+
+| Field          | Value                   |
+| -------------- | ----------------------- |
+| `functionName` | `_start`                |
+| `daemon`       | `false`                 |
+| Proplet env    | `PROPLET_DIRS=/tmp` (not yet on CRD) |
+| Proplet type   | `external` (workaround)  |

@@ -1,0 +1,67 @@
+---
+title: HTTP Client
+description: Make outgoing HTTP requests from WASM via the Kubernetes operator
+---
+
+This runs the [HTTP client WASM module](/examples/http-client) through the Propeller Kubernetes operator. The module makes GET and POST requests using `wasi:http/outgoing-handler`.
+
+## Prerequisites
+
+The operator must be deployed and a Proplet registered. Follow the [end-to-end example](/k8s/example) first.
+
+## Proplet Configuration
+
+The HTTP client needs the WASI HTTP proxy enabled on the proplet. Patch your Proplet:
+
+```bash
+kubectl patch proplet k8s-proplet --type=merge -p '{"spec":{"k8s":{"env":{"httpEnabled":true}}}}'
+```
+
+Wait for the proplet pod to roll:
+
+```bash
+kubectl get pods -n propeller-workloads -w | grep proplet
+```
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make http-client
+```
+
+## Apply the Task
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/http-client.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: http-client-example
+spec:
+  name: http-client-example
+  functionName: _start
+  file: "${WASM_B64}"
+  propletSelector:
+    propletId: "k8s-proplet"
+EOF
+```
+
+## Watch and Verify
+
+```bash
+kubectl get task http-client-example -n propeller-workloads -w
+```
+
+Expected result shows HTTP response bodies from httpbin.org GET and POST requests.
+
+> **Note:** `http-client.wasm` is ~298KB. If the task stays in `running` without completing, the inline base64 may exceed your MQTT broker's message size. Use `imageUrl` instead (see [Large Modules](/k8s/examples#large-modules-and-imageurl)).
+
+## Reference
+
+| Field          | Value                   |
+| -------------- | ----------------------- |
+| `functionName` | `_start`                |
+| `daemon`       | `false`                 |
+| Proplet env    | `httpEnabled: true`     |

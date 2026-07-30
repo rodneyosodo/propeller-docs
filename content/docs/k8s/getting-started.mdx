@@ -25,9 +25,30 @@ You also need:
   git clone https://github.com/absmach/propeller-k8s-operator.git
   ```
 
+  ```bash
+  # 1. Create cluster
+  k3d cluster create propeller
+
+  # 2. Install CRDs
+  make install
+
+  # 3. Start operator with MQTT. Make sure you replace the placeholders in the `ARGS` with your MQTT credentials from propeller provisioning.
+  make run ARGS="--mqtt-address='tcp://your-mqtt:1883' \
+    --tenant-id='<tenant>' \
+    --channel-id='<channel>' \
+    --entity-id='<entity>' \
+    --api-key='<api-key>'"
+
+  # 4. (another terminal) Create a proplet. Make sure you replace the placeholders in `config/samples/propeller_v1_proplet.yaml` with your credentials.
+  kubectl apply -f config/samples/propeller_v1_proplet.yaml
+
+  # 5. Run a WASM task
+  kubectl apply -f config/samples/propeller_v1_task.yaml
+  ```
+
 ## How It Works
 
-The operator connects to a Atom MQTT broker and watches five Custom Resource kinds: `Proplet`, `Task`, `PropellerJob`, `FederatedJob`, and `TrainingRound`. When you apply a manifest, the operator reconciles the desired state by dispatching WASM tasks to proplets over MQTT and recording results back into resource status fields.
+The operator connects to a FluxMQ MQTT broker and watches five Custom Resource kinds: `Proplet`, `Task`, `PropellerJob`, `FederatedJob`, and `TrainingRound`. When you apply a manifest, the operator reconciles the desired state by dispatching WASM tasks to proplets over MQTT and recording results back into resource status fields.
 
 See the [Operator overview](/k8s/operator) for a full architecture description.
 

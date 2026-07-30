@@ -1,0 +1,59 @@
+---
+title: String Input (WASM Component)
+description: Pass string inputs to a WASM component via the Kubernetes operator
+---
+
+This runs the [greet-component WASM module](/examples/string-input) — a WASM Component Model binary that takes a string input and returns a greeting — through the Propeller Kubernetes operator.
+
+## Prerequisites
+
+The operator must be deployed and a Proplet registered. Follow the [end-to-end example](/k8s/example) first.
+
+String inputs require WAVE encoding: the value must be wrapped in quotes at the WAVE layer, then escaped for YAML.
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make greet-component
+```
+
+## Apply the Task
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/greet-component.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: greet-component-example
+spec:
+  name: greet-component-example
+  functionName: greet
+  file: "${WASM_B64}"
+  inputs:
+    - '"John Doe"'
+  propletSelector:
+    propletId: "k8s-proplet"
+EOF
+```
+
+> The input `'"John Doe"'` is YAML for the JSON string `"\"John Doe\""`. The double quotes are part of the WAVE encoding for string values.
+
+## Watch and Verify
+
+```bash
+kubectl get task greet-component-example -n propeller-workloads \
+  -o jsonpath='{.status.results}'
+```
+
+Expected result: `"Hello, John Doe!"`
+
+## Reference
+
+| Field          | Value                              |
+| -------------- | ---------------------------------- |
+| `functionName` | `greet`                            |
+| `inputs`       | `['"John Doe"']` (WAVE-encoded)    |
+| `daemon`       | `false`                            |
+| Proplet env    | none required (auto-detects component) |

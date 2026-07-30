@@ -40,6 +40,25 @@ _Figure: Proplet state machine showing transitions between Initializing, Running
 | `k8s.logLevel`                     | `debug` \| `info` \| `warn` \| `error` | No        | `info`  | Log level for the proplet pod                                                              |
 | `k8s.replicas`                     | int32                                  | No        | `1`     | Number of pod replicas (0–100)                                                             |
 | `k8s.pluginDir`                    | string                                 | No        | —       | Path inside the container where WASM plugin files are loaded from (`PROPLET_PLUGIN_DIR`)   |
+| `k8s.env.livelinessInterval`       | duration                               | No        | `10s`   | `PROPLET_LIVELINESS_INTERVAL`                                                              |
+| `k8s.env.metricsInterval`          | duration                               | No        | `10s`   | `PROPLET_METRICS_INTERVAL`                                                                 |
+| `k8s.env.metricsPort`              | int32                                  | No        | `9092`  | `PROPLET_METRICS_PORT`                                                                     |
+| `k8s.env.metricsEnabled`           | bool                                   | No        | `true`  | `PROPLET_METRICS_ENABLED`                                                                  |
+| `k8s.env.externalWasmRuntime`      | string                                 | No        | —       | `PROPLET_EXTERNAL_WASM_RUNTIME`; path to an external `wasmtime` binary, or `""` to force the proplet's built-in runtime |
+| `k8s.env.halEnabled`               | bool                                   | No        | —       | `PROPLET_HAL_ENABLED`; enables the Elastic HAL / TEE attestation stub                      |
+| `k8s.env.httpEnabled`              | bool                                   | No        | —       | `PROPLET_HTTP_ENABLED`; enables the WASI HTTP proxy capability                             |
+| `k8s.env.usbEnabled`               | bool                                   | No        | —       | `PROPLET_USB_ENABLED`                                                                      |
+| `k8s.env.otelUrl`                  | string                                 | No        | —       | `PROPLET_OTEL_URL`; OpenTelemetry collector endpoint                                       |
+| `k8s.env.traceRatio`               | string                                 | No        | —       | `PROPLET_TRACE_RATIO`; sampling ratio, e.g. `"0.5"`                                        |
+| `k8s.env.tags`                     | string                                 | No        | —       | `PROPLET_TAGS`; comma-separated                                                            |
+| `k8s.env.location`                 | string                                 | No        | —       | `PROPLET_LOCATION`                                                                         |
+| `k8s.env.description`              | string                                 | No        | —       | `PROPLET_DESCRIPTION`                                                                      |
+| `k8s.env.kbsUri`                   | string                                 | No        | —       | `PROPLET_KBS_URI`; Key Broker Service URI for confidential computing                       |
+| `k8s.env.aaConfigPath`             | string                                 | No        | —       | `PROPLET_AA_CONFIG_PATH`; attestation agent config path for confidential computing         |
+| `k8s.env.mqttTlsCaCert`            | string                                 | No        | —       | `PROPLET_MQTT_TLS_CA_CERT`                                                                 |
+| `k8s.env.mqttTlsClientCert`        | string                                 | No        | —       | `PROPLET_MQTT_TLS_CLIENT_CERT`                                                             |
+| `k8s.env.mqttTlsClientKey`         | string                                 | No        | —       | `PROPLET_MQTT_TLS_CLIENT_KEY`                                                              |
+| `k8s.env.mqttTlsInsecureSkipVerify`| bool                                   | No        | —       | `PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY`                                                    |
 | `external.deviceType`              | string                                 | No        | —       | Device category label used for task matching (e.g. `raspberry-pi-4`)                       |
 | `external.capabilities`            | []string                               | No        | —       | Capability strings the device advertises (e.g. `wasm`, `gpu`)                              |
 | `resources`                        | ResourceList                           | No        | —       | Kubernetes CPU and memory requests/limits applied to the proplet pod                       |
@@ -94,26 +113,15 @@ Valid state transitions are enforced by the operator. Task completion and failur
 
 ### Execution Paths
 
-![Task Execution Paths](../images/kubernetes-operator/task-execution-paths.svg)
+A `Task` always dispatches to its assigned proplet over MQTT, whether that proplet's `spec.type` is `k8s` or `external`. A `k8s`-type proplet is still a real Kubernetes `Deployment`, but the pod it runs is the same proplet process an `external` proplet runs — so both take identical dispatch and result paths. The operator itself never executes a WASM module or a container image directly; it only publishes MQTT messages and consumes MQTT results.
 
-_Figure: Comparison of task execution paths for external vs k8s proplets. External proplets receive tasks via MQTT and return results through the broker. K8s proplets run as Kubernetes Jobs with ConfigMaps for task configuration and multiple result extraction methods (Job annotations, ConfigMaps, Secrets, or Pod annotations)._
+1. `TaskReconciler` picks up the new Task and resolves the target proplet via `spec.propletSelector`.
+2. It publishes an MQTT message to `control/manager/start` containing the full task spec: function name, WASM `file` bytes or `imageUrl`, inputs, environment variables, scheduling parameters, monitoring profile, and the assigned proplet ID.
+3. The proplet receives the message and resolves the module: `file` is decoded inline; `imageUrl` is either fetched directly (plain HTTP/HTTPS URL) or requested from the registry proxy over MQTT (OCI reference), which streams the module back in chunks. Either way, the proplet ends up with WASM bytes it loads with its runtime (e.g. Wasmtime) and executes the named function.
+4. The proplet publishes the result to `control/proplet/results`.
+5. The `TaskReconciler`'s MQTT result handler receives the message, stores the output in `status.results`, and sets `status.phase = completed` (or `failed`, with `status.error` set).
 
-**External proplet path:**
-
-1. `TaskReconciler` picks up the new Task and resolves the target proplet by `spec.propletSelector.propletId`.
-2. The reconciler looks up the Proplet CR and confirms its type is `external`.
-3. It publishes an MQTT message to `control/manager/start` containing the full task spec: function name, WASM file or image URL, inputs, environment variables, scheduling parameters, monitoring profile, and the assigned proplet ID.
-4. The proplet receives the message, loads the WASM module with its runtime (e.g. Wasmtime), and executes the named function.
-5. The proplet publishes the result to `control/proplet/results`.
-6. The `TaskReconciler`'s MQTT result handler receives the message, stores the output in `status.results`, and sets `status.phase = completed`.
-
-**k8s proplet path:**
-
-1. `TaskReconciler` resolves the proplet and confirms its type is `k8s`.
-2. It creates a `ConfigMap` containing task environment variables (function name, inputs, monitoring settings, etc.) and an optional `wasm_file_provided` key if a WASM file is embedded.
-3. It creates a Kubernetes `Job` whose pod runs the image specified in `spec.imageUrl`.
-4. The reconciler is notified of Job changes via Kubernetes owner-reference watches (the `Owns(&batchv1.Job{})` watch triggers reconcile on every Job status update). A safety requeue at 5 minutes handles edge cases where the watch event is missed. On Job completion it attempts multi-method result extraction: Job annotations, container terminated message, a result ConfigMap (`{jobName}-result`), a result Secret (`{jobName}-result`), or Pod annotations—whichever is populated first.
-5. On success it sets `status.phase = completed` and stores the extracted result in `status.results`.
+`imageUrl` is a WASM module reference, not a container image — the operator does not run it as a Kubernetes Job. See the [k8s examples guide](/k8s/examples) for how to run various WASM modules this way.
 
 ### Proplet Selection
 
@@ -138,7 +146,7 @@ If no proplet satisfies the filter, the task remains in `pending` and is requeue
 | `functionName`                             | string                   | No            | —       | Exported WASM function to invoke; defaults to the task name if omitted                           |
 | `kind`                                     | `standard` \             | `federated`   | No      | `standard`                                                                                       |
 | `file`                                     | bytes                    | No            | —       | WASM binary encoded as a base64 string in YAML                                                   |
-| `imageUrl`                                 | string                   | No            | —       | OCI image reference containing the WASM module; required for k8s proplets                        |
+| `imageUrl`                                 | string                   | No            | —       | OCI registry reference (or plain HTTP/HTTPS URL) to a WASM module; the proplet fetches it itself, via the registry proxy for OCI refs. Not a container image — set exactly one of `imageUrl` or `file` |
 | `cliArgs`                                  | []string                 | No            | —       | Command-line arguments passed to the WASM runtime                                                |
 | `inputs`                                   | []string                 | No            | —       | Inputs passed to the function; numeric values are accepted and coerced                           |
 | `env`                                      | map[string]string        | No            | —       | Environment variables available in the module                                                    |
@@ -150,11 +158,11 @@ If no proplet satisfies the filter, the task remains in `pending` and is requeue
 | `propletSelector.matchDeviceTypes`         | []string                 | No            | —       | Target Proplets with a matching device type                                                      |
 | `propletSelector.matchCapabilities`        | []string                 | No            | —       | Target Proplets advertising all listed capabilities                                              |
 | `preferredPropletType`                     | `k8s` \                  | `external` \  | `any`   | No                                                                                               |
-| `resourceRequirements.cpu`                 | string                   | No            | —       | CPU resource request/limit applied to the k8s Job pod (e.g. `100m`); not used for scheduling     |
-| `resourceRequirements.memory`              | string                   | No            | —       | Memory resource request/limit applied to the k8s Job pod (e.g. `256Mi`); not used for scheduling |
-| `resourceRequirements.custom`              | map[string]string        | No            | —       | Custom resource constraints passed to the k8s Job pod                                            |
-| `daemon`                                   | bool                     | No            | `false` | Run indefinitely; sets Kubernetes RestartPolicy to Always                                        |
-| `restartPolicy`                            | Kubernetes RestartPolicy | No            | —       | Override pod restart policy for k8s tasks                                                        |
+| `resourceRequirements.cpu`                 | string                   | No            | —       | Present in the schema but currently unused by the reconciler (previously applied to a k8s Job pod; no longer created) |
+| `resourceRequirements.memory`              | string                   | No            | —       | Present in the schema but currently unused by the reconciler (previously applied to a k8s Job pod; no longer created) |
+| `resourceRequirements.custom`              | map[string]string        | No            | —       | Present in the schema but currently unused by the reconciler (previously applied to a k8s Job pod; no longer created) |
+| `daemon`                                   | bool                     | No            | `false` | Forwarded to the proplet; the proplet runs the task indefinitely instead of exiting after one invocation |
+| `restartPolicy`                            | Kubernetes RestartPolicy | No            | —       | Present in the schema but currently unused by the reconciler (previously a k8s Job pod restart policy override) |
 | `encrypted`                                | bool                     | No            | `false` | Signal that the WASM binary is encrypted                                                         |
 | `kbsResourcePath`                          | string                   | No            | —       | Key Broker Service path for decrypting the module                                                |
 | `dependsOn`                                | []string                 | No            | —       | Task IDs that must complete before this task is scheduled                                        |
@@ -332,6 +340,5 @@ The operator sets Kubernetes owner references on all resources it creates:
 | `FederatedJob`       | `TrainingRound` CRs                       |
 | `TrainingRound`      | `Task` CRs (one per participant)          |
 | `Proplet` (k8s type) | `Deployment`                              |
-| `Task` (k8s proplet) | `Job`, `ConfigMap`                        |
 
 When a parent resource is deleted, Kubernetes garbage-collects all owned children automatically. For Proplet and Task resources, the operator also adds a finalizer to ensure it can clean up resources before the object is removed from the API server.

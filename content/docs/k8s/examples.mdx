@@ -1,0 +1,178 @@
+---
+title: Running Other WASM Examples
+description: Run compute, filesystem, HTTP, attestation, WASI-NN, and TEE Propeller examples via the Kubernetes operator
+---
+
+The [previous example](/k8s/example) walks through the full addition example end to end — provisioning Atom, deploying the operator, and running one `Task`. This page assumes that setup is already done (an operator connected to MQTT, and at least one `Proplet` registered) and shows how to run the rest of the [WASM examples](/examples) the same way. Every example below was verified against a real `k8s`-type proplet, with real captured output.
+
+All of these examples are documented in depth on their own pages under [Examples](/examples), including what each module does and how to run it against the standalone `propeller` manager/proplet. This page only covers the k8s-operator-specific parts: the `Task` manifest, and any `Proplet`-level configuration a given example needs.
+
+## Checked-in samples
+
+The `propeller-k8s-operator` repo's [`config/samples/`](https://github.com/absmach/propeller-k8s-operator/tree/main/config/samples) ships a ready-to-apply `Task` for every example below, with the compiled `.wasm` already embedded — no need to clone `propeller` or build anything to try them:
+
+```bash
+git clone https://github.com/absmach/propeller-k8s-operator.git
+cd propeller-k8s-operator
+
+# most examples: apply directly
+kubectl apply -f config/samples/propeller_v1_task_compute.yaml
+kubectl get task compute-example -w
+
+# the feature-gated ones (HTTP, attestation, HAL, TEE) need a proplet with
+# every optional flag on — apply this first (edit connectionConfig to your
+# credentials):
+kubectl apply -f config/samples/propeller_v1_proplet_full.yaml
+kubectl apply --server-side -f config/samples/propeller_v1_task_http_client.yaml  # large file, needs --server-side
+```
+
+| Example          | Sample file                                                                                                | Target proplet                                                                                   |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Addition         | `propeller_v1_task.yaml`                                                                                   | `k8s-proplet`                                                                                    |
+| Compute          | `propeller_v1_task_compute.yaml`                                                                           | `k8s-proplet`                                                                                    |
+| String Input     | `propeller_v1_task_string_input.yaml`                                                                      | `k8s-proplet`                                                                                    |
+| HTTP server      | `propeller_v1_task_http_server.yaml`                                                                       | `k8s-proplet-full`                                                                               |
+| HTTP client      | `propeller_v1_task_http_client.yaml`                                                                       | `k8s-proplet-full`                                                                               |
+| Attestation Test | `propeller_v1_task_attestation_test.yaml`                                                                  | `k8s-proplet-full`                                                                               |
+| Elastic HAL      | `propeller_v1_task_hal_test.yaml`                                                                          | `k8s-proplet-full`                                                                               |
+| TEE              | `propeller_v1_task_tee.yaml`                                                                               | `k8s-proplet-full` (template — needs a real registry image, see [below](#tee-requires-imageurl)) |
+| Filesystem       | `propeller_v1_task_filesystem.yaml`                                                                        | `external-proplet` (CRD gap on `k8s`, see [below](#known-gaps))                                  |
+| WASI HTTP        | `propeller_v1_task_wasi_http.yaml`                                                                         | `external-proplet` (CRD gap on `k8s`, see [below](#known-gaps))                                  |
+| DAG Workflows    | `propeller_v1_task_dag_a.yaml` + `propeller_v1_task_dag.yaml`                                              | `external-proplet`                                                                               |
+| WASI-NN          | no Task sample — `propeller_v1_proplet_wasi_nn.yaml` only, see [below](#wasi-nn-a-dedicated-proplet-image) | `wasi-nn-proplet`                                                                                |
+
+`propeller_v1_proplet_full.yaml` is a `k8s`-type proplet with every optional `k8s.env.*` flag turned on at once (they don't conflict), so one proplet can run HTTP server/client, attestation-test, hal-test, and (with a real registry image) TEE.
+
+## Building your own
+
+For anything not covered by a checked-in sample — a different `propeller` example, or your own module — build the `.wasm` module in the `propeller` repo, base64-encode it, and apply a `Task` with `spec.file` set to that value plus the `functionName`/`inputs`/`cliArgs`/`daemon` the example needs.
+
+```bash
+# in the propeller repo
+cd propeller
+make <example>        # e.g. make compute — builds build/<example>.wasm
+
+# in propeller-k8s-operator, or anywhere kubectl can reach the cluster
+WASM_B64=$(base64 -w0 propeller/build/<example>.wasm)
+kubectl apply --server-side -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: <example>-example
+spec:
+  name: <example>-example
+  functionName: <function>
+  file: "${WASM_B64}"
+  inputs: [<...>]
+  propletSelector:
+    propletId: "<your-proplet-name>"
+EOF
+
+kubectl get task <example>-example -n propeller-workloads -w
+kubectl get task <example>-example -n propeller-workloads -o jsonpath='{.status.results}'
+```
+
+`--server-side` avoids `kubectl apply`'s client-side `last-applied-configuration` annotation, which duplicates the (often large, base64-encoded) file content and can exceed Kubernetes' 256KiB single-annotation limit for anything but the smallest modules — confirmed hitting this with a 298KB module using plain `apply`.
+
+If you have the `propeller-k8s-operator` repo cloned, `hack/apply-example-task.sh` wraps this same recipe (check the script for current flags — `--` separates `inputs` from `cliArgs`, and a `DAEMON=true` env var sets `spec.daemon`):
+
+```bash
+cd propeller-k8s-operator
+PROPELLER_DIR=../propeller PROPLET_ID=<your-proplet-name> \
+  ./hack/apply-example-task.sh <example> <function> [input ...] [-- cliArg ...]
+```
+
+## How dispatch works
+
+A `Task` always executes on its assigned proplet over MQTT — this is true for both `k8s`-type and `external`-type proplets, since a `k8s` proplet is a Kubernetes `Deployment` running the same proplet process an external device runs. The operator itself never runs a WASM module or executes an OCI image directly. See [Execution Paths](/k8s/features#execution-paths) for the full flow.
+
+## Reference
+
+| Example                                        | `functionName`                  | `inputs` / `cliArgs`                                            | `daemon` | Proplet requirements                                                                                                                                | Verified                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------- | ------------------------------- | --------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Addition](/examples/addition)                 | `add`/`main`                    | inputs: `[10, 20]`                                              | `false`  | none — see the full [walkthrough](/k8s/example)                                                                                                     | ✅ `42`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| [Compute](/examples/compute)                   | `compute`                       | inputs: `[5]` (`[50]` for a heavier load)                       | `false`  | none                                                                                                                                                | ✅ `5120` (for `[5]`)                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| [String Input](/examples/string-input)         | `greet`                         | inputs: `["\"John Doe\""]`                                      | `false`  | none — this is a WASM Component, the proplet auto-detects it                                                                                        | ✅ `"Hello, John Doe!"`                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| [HTTP client](/examples/http-client)           | `_start`                        | —                                                               | `false`  | `k8s.env.httpEnabled: true`                                                                                                                         | ✅ real outbound requests to httpbin.org (an external service — its own availability varies run to run; a `200 OK` on the plain HTTP GET is the expected good result)                                                                                                                                                                                                                                                                           |
+| [HTTP server](/examples/http-server)           | `_start`                        | cliArgs: `["--port", "8044"]`                                   | `true`   | `k8s.env.httpEnabled: true`                                                                                                                         | ✅ port-forwarded and curled, `200` + `"Hello from proplet WASM HTTP server!"`                                                                                                                                                                                                                                                                                                                                                                  |
+| [Attestation Test](/examples/attestation-test) | `run-attestation` (not `run`)   | —                                                               | `false`  | `k8s.env.externalWasmRuntime: ""`, `k8s.env.halEnabled: true`                                                                                       | ✅ completes; reports `attestation: failed (no TEE platform available)` — expected without real TEE hardware                                                                                                                                                                                                                                                                                                                                    |
+| [Elastic HAL](/examples/hal-test)              | `run-hal-test` (not `hal-test`) | —                                                               | `false`  | `k8s.env.externalWasmRuntime: ""`, `k8s.env.halEnabled: true`                                                                                       | ✅ real crypto/random/clock output via the HAL stub                                                                                                                                                                                                                                                                                                                                                                                             |
+| [DAG Workflows](/examples/dag)                 | —                               | —                                                               | —        | native operator feature; use `dependsOn`/`runIf` directly, see [Task Spec Reference](/k8s/features#task-spec-reference)                             | ✅ dependent Task confirmed gated at `pending` until the parent completed, then ran correctly                                                                                                                                                                                                                                                                                                                                                   |
+| [TEE](/examples/tee)                           | `add`                           | inputs: `[10, 20]`, `encrypted: true` on the Task               | `false`  | `k8s.env.kbsUri`, `k8s.env.aaConfigPath`; requires real TEE hardware                                                                                | ✅ (as a template) confirmed two real behaviors: `encrypted: true` with `spec.file` is rejected outright ("image*url is required for encrypted workloads"), and with `spec.imageUrl` set (even to a placeholder) the proplet checks for TEE hardware \_before* fetching the image, failing fast and cleanly with `status.phase: failed`, `status.error: "TEE runtime not available"` on a host without it — see [below](#tee-requires-imageurl) |
+| [WASI-NN](/examples/wasi-nn)                   | `_start`                        | cliArgs: `["-S", "nn", "--dir=/home/proplet/fixture::fixture"]` | `false`  | `k8s.image: ghcr.io/absmach/propeller/proplet-wasi-nn:latest`                                                                                       | ⚠️ partially verified: the dedicated proplet image pulls and connects correctly; the example module itself needs a `wasi_ephemeral_nn`-capable build toolchain not covered here, so the end-to-end task run is untested                                                                                                                                                                                                                         |
+| [Filesystem](/examples/filesystem)             | `_start`                        | —                                                               | `false`  | ⚠️ needs `PROPLET_DIRS=/tmp` — not yet exposed on the `Proplet` CRD, see [below](#known-gaps)                                                       | Not run — blocked by the CRD gap                                                                                                                                                                                                                                                                                                                                                                                                                |
+| [WASI HTTP](/examples/wasi-http)               | `_start`                        | —                                                               | `true`   | `k8s.env.externalWasmRuntime: ""`, `k8s.env.httpEnabled: true`; ⚠️ also needs `PROPLET_HTTP_PROXY_PORT`, not yet exposed — see [below](#known-gaps) | Not run — blocked by the CRD gap                                                                                                                                                                                                                                                                                                                                                                                                                |
+
+## HTTP server is a daemon task
+
+`http-server` reports completion as soon as the listener starts (`Result: started at port 8044`), not when the server stops. Verify it's actually serving with a port-forward:
+
+```bash
+kubectl port-forward deploy/k8s-proplet-full-proplet 18044:8044 &
+curl http://localhost:18044/
+# Hello from proplet WASM HTTP server!
+```
+
+## WASI-NN: a dedicated proplet image
+
+WASI-NN needs a proplet build with the neural-network host functions compiled in, so it's a different `k8s.image` rather than an env flag — `propeller_v1_proplet_wasi_nn.yaml` sets this up. It's confirmed pullable and connects/authenticates over MQTT like any other proplet. Building the WASI-NN example module itself requires a Rust toolchain with the `wasi_ephemeral_nn` import available to `wasm-component-ld` (not set up by a plain `cargo build --target wasm32-wasip2 --release` on a stock toolchain) — if you hit `module requires an import interface named 'wasi_ephemeral_nn'`, that's this, not an operator issue.
+
+## TEE requires `imageUrl`
+
+Setting `spec.encrypted: true` with `spec.file` fails at the proplet, not the operator — the proplet's own request validation requires an `imageUrl` for encrypted workloads:
+
+```
+Error handling message: image_url is required for encrypted workloads
+```
+
+Because this rejection happens before the proplet starts tracking the task, it never publishes a result, so the operator has no way to learn the task failed — the `Task` stays at `phase: running` indefinitely rather than moving to `failed`. If you see a `Task` stuck at `running` for an encrypted task using `spec.file`, check the proplet's logs for this message rather than waiting on `status.error`, which will stay empty.
+
+`propeller_v1_task_tee.yaml` uses `spec.imageUrl` (satisfying that check) but with a placeholder registry — applying it as-is is still useful: the proplet checks for TEE hardware _before_ attempting to fetch the image, so on a host without TDX/SEV it fails fast and cleanly:
+
+```
+status.phase: failed
+status.error: TEE runtime not available
+```
+
+No hang, and no need for a real registry just to observe this. To actually run the TEE example end to end, publish the (encrypted) module to a real OCI registry and set `spec.imageUrl` for real (see [Large modules and `imageUrl`](#large-modules-and-imageurl)) alongside `k8s.env.kbsUri` and `k8s.env.aaConfigPath` on the Proplet, on a host with real TEE hardware.
+
+## Large modules and `imageUrl`
+
+`spec.file` inlines the WASM binary as base64 in the MQTT publish, and this works reliably at real sizes — a 298KB module (`http-client.wasm`) was dispatched and executed successfully once the underlying MQTT connection was healthy. If a `Task` stays in `running` with no result, it's much more likely to be a connection issue than a size limit: check that the operator and proplet are both actually connected (no repeated `MQTT connection lost`/`MQTT reconnecting` in the operator's logs, and a stable subscription in the proplet's), and that they don't share an MQTT client ID with any other client on the broker — the operator derives its client ID from `--entity-id`, so this only bites if two operator instances point at the same tenant/channel with the same entity ID.
+
+For genuinely large modules, or if you want to distribute a module without embedding it in every `Task` manifest, publish it to an OCI registry and use `spec.imageUrl` instead — the proplet fetches it in chunks via the registry proxy:
+
+```yaml
+spec:
+  name: compute-example
+  functionName: compute
+  imageUrl: "your-registry.example.com/compute-wasm:latest"
+  inputs: [5]
+  propletSelector:
+    propletId: "k8s-proplet"
+```
+
+See [`propeller_v1_task_with_image.yaml`](https://github.com/absmach/propeller-k8s-operator/blob/main/config/samples/propeller_v1_task_with_image.yaml) for a full sample.
+
+### Deploying the registry proxy
+
+`spec.imageUrl` needs the registry proxy — a standalone service from the `propeller` repo (`cmd/proxy`), not a CRD this operator manages — running and reachable by both the operator and every proplet on the same tenant/channel. See [Proxy](/proxy) for the service itself; [`propeller_proxy_deployment.yaml`](https://github.com/absmach/propeller-k8s-operator/blob/main/config/samples/propeller_proxy_deployment.yaml) is a plain Kubernetes Deployment + Service for it, mirroring `propeller/docker/compose.propeller.yaml`'s proxy service:
+
+```bash
+# edit connectionConfig to a *distinct* Atom entity (same tenant/channel as
+# your operator and proplets, but its own entity ID) and
+# PROXY_REGISTRY_URL/credentials, then:
+kubectl apply -f config/samples/propeller_proxy_deployment.yaml
+```
+
+Confirmed: the image pulls, the container starts, and it correctly attempts to subscribe to `registry/proplet` on your tenant/channel — verified via logs with placeholder (invalid) credentials, which get as far as a clean auth rejection rather than a crash. Without this running, any `imageUrl`-based Task or FederatedJob round reaches "requesting binary from registry" in the proplet's logs and then never completes.
+
+## Known gaps
+
+A few example env vars aren't yet exposed on the `Proplet` CRD's `k8s.env` block, so the corresponding examples currently can't be fully configured through a `k8s`-type proplet:
+
+- **`PROPLET_DIRS`** (Filesystem example) — controls which host directories are preopened for WASI filesystem access.
+- **`PROPLET_HTTP_PROXY_PORT`** (WASI HTTP example) — the port the HTTP proxy listens on.
+- **`PROPLET_HTTP_TLS_CA_CERT`** (HTTP client example, custom/self-signed certs) — custom CA for outgoing HTTPS.
+
+Until these are added to `K8sPropletSpec.Env`, `propeller_v1_task_filesystem.yaml` and `propeller_v1_task_wasi_http.yaml` target the checked-in `external-proplet` sample instead, where you control the process environment directly (see the [standalone example pages](/examples) for each one's Docker Compose setup).

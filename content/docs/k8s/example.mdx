@@ -3,7 +3,7 @@ title: Running a WASM Task via the Propeller Kubernetes Operator
 description: Propeller Kubernetes Operator example
 ---
 
-This is a Propeller Kubernetes Operator example. It provisions [Atom](https://docs.atom.absmach.eu/), deploys the operator, registers an external proplet, and runs a WebAssembly addition task.
+This is a Propeller Kubernetes Operator example. It provisions [Atom](https://www.absmach.eu/docs/atom/), deploys the operator, registers an external proplet, and runs a WebAssembly addition task.
 
 For a complete reference of the operator's architecture, Custom Resource Definitions, configuration options, and MQTT communication patterns, see the [Propeller Kubernetes Operator documentation](/k8s/operator).
 
@@ -85,31 +85,30 @@ This guide uses `propeller/` and `propeller-k8s-operator/` to refer to these dir
 Create a local single-node cluster with k3d:
 
 ```bash
-k3d cluster create k3s-default --wait
+k3d cluster create propeller --wait
 ```
 
 Your output should look like this:
 
 ```bash
-INFO[0000] Created image volume k3d-k3s-default-images
+INFO[0000] Prep: Network
+INFO[0000] Created network 'k3d-propeller'
+INFO[0000] Created image volume k3d-propeller-images
 INFO[0000] Starting new tools node...
-INFO[0001] Creating node 'k3d-k3s-default-server-0'
-INFO[0004] Pulling image 'docker.io/rancher/k3s:v1.31.5-k3s1'
-INFO[0005] Pulling image 'ghcr.io/k3d-io/k3d-tools:5.8.3'
-INFO[0081] Starting node 'k3d-k3s-default-tools'
-INFO[0082] Creating LoadBalancer 'k3d-k3s-default-serverlb'
-INFO[0086] Pulling image 'ghcr.io/k3d-io/k3d-proxy:5.8.3'
-INFO[0115] Using the k3d-tools node to gather environment information
-INFO[0116] HostIP: using network gateway 172.18.0.1 address
-INFO[0116] Starting cluster 'k3s-default'
-INFO[0116] Starting servers...
-INFO[0116] Starting node 'k3d-k3s-default-server-0'
-INFO[0127] All agents already running.
-INFO[0127] Starting helpers...
-INFO[0127] Starting node 'k3d-k3s-default-serverlb'
-INFO[0134] Injecting records for hostAliases (incl. host.k3d.internal) and for 2 network members into CoreDNS configmap...
-INFO[0136] Cluster 'k3s-default' created successfully!
-INFO[0136] You can now use it like this:
+INFO[0001] Creating node 'k3d-propeller-server-0'
+INFO[0003] Starting node 'k3d-propeller-tools'
+INFO[0003] Creating LoadBalancer 'k3d-propeller-serverlb'
+INFO[0004] Using the k3d-tools node to gather environment information
+INFO[0004] HostIP: using network gateway 172.19.0.1 address
+INFO[0004] Starting cluster 'propeller'
+INFO[0004] Starting servers...
+INFO[0004] Starting node 'k3d-propeller-server-0'
+INFO[0010] All agents already running.
+INFO[0010] Starting helpers...
+INFO[0011] Starting node 'k3d-propeller-serverlb'
+INFO[0017] Injecting records for hostAliases (incl. host.k3d.internal) and for 2 network members into CoreDNS configmap...
+INFO[0019] Cluster 'propeller' created successfully!
+INFO[0019] You can now use it like this:
 kubectl cluster-info
 ```
 
@@ -122,12 +121,12 @@ kubectl cluster-info
 Your output should look like this:
 
 ```bash
-Kubernetes control plane is running at https://0.0.0.0:34963
-CoreDNS is running at https://0.0.0.0:34963/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
-Metrics-server is running at https://0.0.0.0:34963/api/v1/namespaces/kube-system/services/https:metrics-server:https/proxy
+Kubernetes control plane is running at https://0.0.0.0:33157
+CoreDNS is running at https://0.0.0.0:33157/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+Metrics-server is running at https://0.0.0.0:33157/api/v1/namespaces/kube-system/services/https:metrics-server:https/proxy
 ```
 
-> The port (`34963` above) is assigned randomly by k3d and will differ on your machine.
+> The port (`33157` above) is assigned randomly by k3d and will differ on your machine.
 
 Verify the node is Ready:
 
@@ -139,7 +138,7 @@ Your output should look like this:
 
 ```bash
 NAME                       STATUS   ROLES                  AGE   VERSION
-k3d-k3s-default-server-0   Ready    control-plane,master   13s   v1.31.5+k3s1
+k3d-propeller-server-0   Ready    control-plane,master   13s   v1.36.2+k3s1
 ```
 
 ## Step 2 — Install Custom Resource Definitions
@@ -155,9 +154,6 @@ Your output should look like this:
 
 ```bash
 ./bin/controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-Downloading sigs.k8s.io/kustomize/kustomize/v5@v5.6.0
-go: downloading sigs.k8s.io/kustomize/kustomize/v5 v5.6.0
-...
 ./bin/kustomize build config/crd | kubectl apply -f -
 customresourcedefinition.apiextensions.k8s.io/federatedjobs.propeller.propeller.absmach.eu created
 customresourcedefinition.apiextensions.k8s.io/propellerjobs.propeller.propeller.absmach.eu created
@@ -248,17 +244,17 @@ make cli
 Your output should look like this:
 
 ```bash
-go build -o build/propeller-cli ./cli/cmd
+go build -o build/cli ./cli/cmd
 ```
 
-The binary is placed at `propeller/build/propeller-cli`.
+The binary is placed at `propeller/build/cli`.
 
 ### 5.2 — Run the provision wizard
 
 Run the provision wizard, writing the output directly to the docker directory:
 
 ```bash
-./build/propeller-cli provision -f docker/config.toml
+./build/cli provision -f docker/config.toml
 ```
 
 The CLI opens an interactive form. Fill in your admin credentials and press Enter to accept the suggested defaults for the optional fields:
@@ -283,25 +279,44 @@ cat docker/config.toml
 Your output should look like this:
 
 ```toml
-# Atom Configuration
+# Propeller Configuration
+# Each identity is an Atom entity of kind "service", profile "Service Account".
 
 [manager]
-tenant_id = "3053156a-1994-4776-9e18-8c5d8883647c"
-entity_id = "0a96e62c-da03-45eb-9699-b7d8dfa843c9"
-api_key = "8bd64edf-6cec-4cd8-aebd-a8e9695c8d90"
-channel_id = "c19ded40-eeec-448e-86e9-42f490c766a4"
+tenant_id = "514dcda6-a2a7-4143-90c4-2478aebfc6ce"
+entity_id = "d91845c0-b155-433e-a314-069d6e2f3c6d"
+api_key = "atom_0051aa741a244fddb9ba7185257cb050_7daea5cab6e96aeec8f4dd3adcb270fdaa5b5c7df41b50cf8a103fa587c1f330"
+channel_id = "8b23d13f-99e4-4b52-b095-9dd6816cd81f"
 
-[proplet]
-tenant_id = "3053156a-1994-4776-9e18-8c5d8883647c"
-entity_id = "b64502f0-25bc-4926-8fbc-ad508f75d96c"
-api_key = "3c905d3c-845b-4b9e-8c51-7ab9a2403163"
-channel_id = "c19ded40-eeec-448e-86e9-42f490c766a4"
+[proplet1]
+tenant_id = "514dcda6-a2a7-4143-90c4-2478aebfc6ce"
+entity_id = "26eb7b3d-9f41-4afc-a252-f124e80c1fc3"
+api_key = "atom_a03bf9d04e9f4df4b89b269ab211661f_89b4595955311d5b5808dac87da7e0517f8d2a9cff440afa527fe96d64f6d69f"
+channel_id = "8b23d13f-99e4-4b52-b095-9dd6816cd81f"
+
+[proplet2]
+tenant_id = "514dcda6-a2a7-4143-90c4-2478aebfc6ce"
+entity_id = "6754b6a3-ba22-453b-9bbb-836776cdd6e8"
+api_key = "atom_55f23e92f9cf4c8cb46afeec9a455374_4fb3cddfae749a5a89ea5dd95b7fe3f00ee081d821dde379aa58b8baf5e87120"
+channel_id = "8b23d13f-99e4-4b52-b095-9dd6816cd81f"
+
+[proplet3]
+tenant_id = "514dcda6-a2a7-4143-90c4-2478aebfc6ce"
+entity_id = "2b729092-2163-4eea-baef-845b5d133b09"
+api_key = "atom_742f6a46998a48189459e666e7f5592a_21c5c74de775241d975dbd971f68f4cb758a6df9b9d2f398340b301b708459e3"
+channel_id = "8b23d13f-99e4-4b52-b095-9dd6816cd81f"
+
+[proplet4]
+tenant_id = "514dcda6-a2a7-4143-90c4-2478aebfc6ce"
+entity_id = "a27b7a9a-75a7-40b4-bb16-5a405dfc2d28"
+api_key = "atom_c8fd334f181b4dd6b01e3aaafe4c6926_08a365da388c4ee8d904875ce469bbb8571ad3a0b2059a555c4a51b2d498e0ea"
+channel_id = "8b23d13f-99e4-4b52-b095-9dd6816cd81f"
 
 [proxy]
-tenant_id = "3053156a-1994-4776-9e18-8c5d8883647c"
-entity_id = "b64502f0-25bc-4926-8fbc-ad508f75d96c"
-api_key = "3c905d3c-845b-4b9e-8c51-7ab9a2403163"
-channel_id = "c19ded40-eeec-448e-86e9-42f490c766a4"
+tenant_id = "514dcda6-a2a7-4143-90c4-2478aebfc6ce"
+entity_id = "44992fc4-2be5-477d-9bdc-3b80246379c3"
+api_key = "atom_1dbab67fb6c34d1284656ebf0c4e25fe_1736fcc1cee67ce2e8ce23b03e188ad492642957b6dc74f76d45ad8bf84a6e58"
+channel_id = "8b23d13f-99e4-4b52-b095-9dd6816cd81f"
 ```
 
 > The UUIDs shown are from an example run—yours will differ.
@@ -326,7 +341,7 @@ echo "PROP_ID:   $PROP_ID"
 Your output should look like this:
 
 ```bash
-TENANT_ID: 3053156a-1994-4776-9e18-8c5d8883647c
+TENANT_ID: 514dcda6-a2a7-4143-90c4-2478aebfc6ce
 CHAN_ID:    c19ded40-eeec-448e-86e9-42f490c766a4
 MGR_ID:    0a96e62c-da03-45eb-9699-b7d8dfa843c9
 PROP_ID:   b64502f0-25bc-4926-8fbc-ad508f75d96c
@@ -523,13 +538,13 @@ docker build -t propeller-k8s-operator:latest .
 k3d nodes run their own containerd instance and cannot access images from the host Docker daemon directly. You must import the image explicitly so it is available in the cluster's containerd store:
 
 ```bash
-k3d image import propeller-k8s-operator:latest -c k3s-default
+k3d image import propeller-k8s-operator:latest -c propeller
 ```
 
 Your output should look like this:
 
 ```bash
-INFO[0000] Importing image(s) into cluster 'k3s-default'
+INFO[0000] Importing image(s) into cluster 'propeller'
 INFO[0001] Saving 1 image(s) from runtime...
 INFO[0005] Importing images into nodes...
 INFO[0013] Successfully imported image(s)
@@ -864,3 +879,7 @@ The table below lists common fields. For the complete specification, see the [fe
 | `finishedAt`      | When execution ended                                                                  |
 | `results`         | Return value from the WASM function                                                   |
 | `error`           | Error message when `phase` is `failed`                                                |
+
+## Next Steps
+
+See [Running Other WASM Examples](/k8s/examples) for how to run the rest of the [WASM examples](/examples) — compute, filesystem, HTTP client/server, attestation, WASI-NN, TEE, and more — the same way.

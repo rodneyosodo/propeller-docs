@@ -1,0 +1,89 @@
+---
+title: WASI-NN Inference
+description: Run ML inference with WASI-NN via the Kubernetes operator
+---
+
+This runs the [WASI-NN inference module](/examples/wasi-nn) through the Propeller Kubernetes operator. It uses an OpenVINO backend to classify images.
+
+## Prerequisites
+
+The operator must be deployed. Follow the [end-to-end example](/k8s/example) first.
+
+## Proplet Configuration
+
+Unlike other examples, WASI-NN needs a **different proplet image** compiled with neural-network host functions:
+
+```yaml
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Proplet
+metadata:
+  name: wasi-nn-proplet
+spec:
+  type: k8s
+  k8s:
+    image: "ghcr.io/absmach/propeller/proplet-wasi-nn:latest"
+  connectionConfig:
+    mqttAddress: "tcp://host.k3d.internal:1883"
+    tenantId: "<your-tenant-id>"
+    channelId: "<your-channel-id>"
+    entityId: "<your-entity-id>"
+    apiKey: "<your-api-key>"
+    mqttQos: 2
+    mqttTimeout: 30s
+```
+
+Apply it:
+
+```bash
+kubectl apply -n propeller-workloads -f wasi-nn-proplet.yaml
+```
+
+## Prepare Model Files
+
+The module expects OpenVIR model files (`model.xml`, `model.bin`) and a BGR image tensor (`tensor.bgr`). See the [full WASI-NN example](/examples/wasi-nn#step-3-prepare-model-files) for instructions.
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make wasi-nn
+```
+
+## Apply the Task
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/wasi-nn.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: wasi-nn-example
+spec:
+  name: wasi-nn-example
+  functionName: _start
+  file: "${WASM_B64}"
+  cliArgs:
+    - "-S"
+    - "nn"
+    - "--dir=/home/proplet/fixture::fixture"
+  propletSelector:
+    propletId: "wasi-nn-proplet"
+EOF
+```
+
+## Watch and Verify
+
+```bash
+kubectl get task wasi-nn-example -n propeller-workloads -w
+```
+
+Expected result: top 5 ImageNet predictions with confidence scores.
+
+## Reference
+
+| Field          | Value                                                   |
+| -------------- | ------------------------------------------------------- |
+| `functionName` | `_start`                                                |
+| `cliArgs`      | `["-S", "nn", "--dir=/home/proplet/fixture::fixture"]`  |
+| `daemon`       | `false`                                                 |
+| Proplet image  | `ghcr.io/absmach/propeller/proplet-wasi-nn:latest`      |

@@ -1,0 +1,53 @@
+---
+title: Hello World
+description: Run a Hello World WASM task via the Kubernetes operator
+---
+
+This runs the [Hello World WASM module](/examples/hello-world) through the Propeller Kubernetes operator.
+
+## Prerequisites
+
+The operator must be deployed and a Proplet registered. Follow the [end-to-end example](/k8s/example) first.
+
+## Build the WASM Module
+
+```bash
+cd propeller
+make hello-world
+```
+
+## Apply the Task
+
+```bash
+WASM_B64=$(base64 -w0 propeller/build/hello-world.wasm)
+kubectl apply -n propeller-workloads -f - <<EOF
+apiVersion: propeller.propeller.absmach.eu/v1
+kind: Task
+metadata:
+  name: hello-world-example
+spec:
+  name: hello-world-example
+  functionName: main
+  file: "${WASM_B64}"
+  propletSelector:
+    propletId: "k8s-proplet"
+EOF
+```
+
+## Watch and Verify
+
+```bash
+kubectl get task hello-world-example -n propeller-workloads \
+  -o jsonpath='{.status.results}'
+```
+
+Expected result: `Hello World!`
+
+## Reference
+
+| Field          | Value                   |
+| -------------- | ----------------------- |
+| `functionName` | `main`                  |
+| `inputs`       | none                    |
+| `daemon`       | `false`                 |
+| Proplet env    | none required           |
