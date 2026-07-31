@@ -50,24 +50,29 @@ git submodule update --init --recursive
 
 ### Configure Device Identity
 
-Edit `src/main.c` with your device settings:
+Credentials are defined as a `defaults` struct in `src/main.c` and can be overridden at runtime through the Zephyr Settings subsystem (persisted in NVS under the `proplet` prefix). Edit the `defaults` struct in `src/main.c`:
 
 ```c
-#define WIFI_SSID "<YOUR_WIFI_SSID>"
-#define WIFI_PSK "<YOUR_WIFI_PSK>"
-#define PROPLET_ID "<YOUR_PROPLET_ID>"
-#define TENANT_ID "<YOUR_TENANT_ID>"
-#define CHANNEL_ID "<YOUR_CHANNEL_ID>"
+static const struct proplet_credentials defaults = {
+    .wifi_ssid = "<YOUR_WIFI_SSID>",
+    .wifi_psk = "<YOUR_WIFI_PSK>",
+    .proplet_id = "<YOUR_PROPLET_ID>",
+    .api_key = "<YOUR_API_KEY>",
+    .tenant_id = "<YOUR_TENANT_ID>",
+    .channel_id = "<YOUR_CHANNEL_ID>",
+    .mqtt_broker_host = "10.42.0.1", /* Replace with your broker's IP */
+    .mqtt_broker_port = 1883,
+    .mqtt_tls_enabled = false,
+    .tls_client_cert = "",
+    .tls_client_key = "",
+};
 ```
 
-Set the MQTT broker address and port in `src/mqtt_client.c` to the host running your Propeller stack:
+`proplet_id` is the Propeller Entity ID used as the MQTT username; `api_key` is the Entity secret used as the MQTT password. When TLS is enabled, `tls_client_cert` and `tls_client_key` hold the mTLS client credentials.
 
-```c
-#define MQTT_BROKER_HOSTNAME "10.42.0.1" /* Replace with your broker's IP */
-#define MQTT_BROKER_PORT 1883
-```
+At runtime, settings under the `proplet` prefix (e.g. `proplet/proplet_id`, `proplet/wifi_ssid`, `proplet/mqtt_broker_host`, `proplet/api_key`) override the compiled defaults — see `src/credentials.c`. The default MQTT broker host/port are also declared in `src/mqtt_client.h` (`MQTT_BROKER_HOSTNAME`, `MQTT_BROKER_PORT`, `MQTT_BROKER_PORT_TLS`).
 
-The WiFi driver connects on **2.4 GHz only** (`WIFI_FREQ_BAND_2_4_GHZ` in `wifi_manager.c`). 5 GHz networks are not supported.
+The ESP32-S3 radio is **2.4 GHz only** — 5 GHz networks are not supported.
 
 ### Build for ESP32-S3
 
@@ -142,6 +147,7 @@ The Embedded Proplet consists of several C modules that handle different respons
 | File             | Purpose                                               |
 | ---------------- | ----------------------------------------------------- |
 | `main.c`         | Entry point, WiFi/MQTT initialization, heartbeat loop |
+| `credentials.c`  | NVS-backed credential loading and runtime overrides   |
 | `wifi_manager.c` | WiFi connection management                            |
 | `mqtt_client.c`  | MQTT protocol, discovery, subscriptions               |
 | `wasm_handler.c` | WAMR module loading and execution                     |
@@ -205,11 +211,16 @@ CONFIG_WIFI_NM=y
 CONFIG_MQTT_LIB=y
 CONFIG_MQTT_KEEPALIVE=30
 CONFIG_MQTT_CLEAN_SESSION=n
-# CONFIG_MQTT_LIB_TLS=y  # Uncomment to enable TLS
+CONFIG_MQTT_LIB_TLS=y        # TLS enabled by default (port 8883)
+CONFIG_MQTT_LIB_TLS_USE_ALPN=y
 
 # HTTP client (used for registry/model fetching)
 CONFIG_HTTP_CLIENT=y
-CONFIG_HTTP_CLIENT_BUFFER_SIZE=4096
+
+# Settings (NVS-backed credential overrides)
+CONFIG_SETTINGS=y
+CONFIG_SETTINGS_NVS=y
+CONFIG_NVS=y
 
 # Memory
 CONFIG_HEAP_MEM_POOL_SIZE=65536
@@ -219,17 +230,17 @@ CONFIG_MAIN_STACK_SIZE=8192
 CONFIG_LOG=y
 CONFIG_LOG_DEFAULT_LEVEL=3
 
-# Metrics (CPU load, heap stats, thread monitoring)
+# Metrics (heap stats, thread monitoring)
 CONFIG_SYS_HEAP_RUNTIME_STATS=y
 CONFIG_THREAD_MONITOR=y
-CONFIG_CPU_LOAD=y
+# CONFIG_CPU_LOAD is not supported on Xtensa targets
 ```
 
-`CONFIG_MQTT_CLEAN_SESSION=n` preserves broker subscriptions across reconnections. `CONFIG_MQTT_KEEPALIVE=30` sets the keepalive to 30 seconds. `CONFIG_WIFI_ESP32` is board-specific and belongs in the board overlay file, not here.
+`CONFIG_MQTT_CLEAN_SESSION=n` preserves broker subscriptions across reconnections. `CONFIG_MQTT_KEEPALIVE=30` sets the keepalive to 30 seconds. `CONFIG_MQTT_LIB_TLS=y` enables MQTT over TLS by default, so the proplet connects on port `8883` unless TLS is compiled out. `CONFIG_WIFI_ESP32` is board-specific and belongs in the board overlay file, not here.
 
 ### Board-Specific Configuration
 
-Create `boards/esp32s3_devkitc_procpu.conf` for board-specific overrides:
+Board-specific overrides are provided in `boards/esp32s3_devkitc_procpu.conf`:
 
 ```ini
 CONFIG_WIFI_ESP32=y
@@ -251,9 +262,9 @@ In `src/main.c`:
 
 ## MQTT Communication
 
-The Embedded Proplet connects to the broker on port `1883` (no TLS by default). It uses the namespace `"embedded"` in all metrics payloads to identify itself to the Manager.
+The Embedded Proplet connects to the broker using `proplet_id` as the MQTT **client ID** and **username**, and the `api_key` as the **password**. The credentials must match the Atom entity (kind `service`, profile `Service Account`) registered with the broker, otherwise the connection is rejected.
 
-The `PROPLET_ID` defined in `src/main.c` is used as both the MQTT **client ID** and **username** when connecting to the broker. This value must match the Atom client ID registered with the broker, otherwise the connection will be rejected.
+The default build enables MQTT over TLS (`CONFIG_MQTT_LIB_TLS=y` in `prj.conf`), so the proplet connects on port `8883` (`MQTT_BROKER_PORT_TLS`). For a plaintext local broker, either compile with TLS disabled or provide a CA certificate / mTLS client credentials. The proplet identifies itself to the Manager with the namespace `"embedded"` in all metrics payloads.
 
 ### MQTT Topics
 
@@ -274,17 +285,17 @@ The `PROPLET_ID` defined in `src/main.c` is used as both the MQTT **client ID** 
 On startup, the Embedded Proplet publishes a discovery message to register with the Manager:
 
 ```c
-publish_discovery(tenant_id, PROPLET_ID, channel_id);
+publish_discovery(tenant_id, proplet_id, channel_id, description, tags, location, version);
 ```
 
-The Manager receives this and adds the Proplet to its fleet.
+The payload includes `proplet_id`, `namespace`, and a `metadata` object with the description, tags, location, IP address, OS (`zephyr`), CPU architecture, total memory, `proplet_version`, and `wasm_runtime` (`wamr`). The Manager receives this and adds the Proplet to its fleet.
 
 ### Heartbeats
 
 The main loop publishes periodic messages:
 
 - **Alive messages** (every 10s): Indicate the Proplet is operational
-- **System metrics** (every 30s): CPU load, heap usage, uptime, thread count
+- **System metrics** (every 30s): CPU load and heap usage
 - **Task metrics** (every 10s): Per-task CPU/memory aggregates for active tasks
 
 The alive message payload:
@@ -309,23 +320,28 @@ A task is treated as a Federated Machine Learning (FML) task when the start comm
 
 #### Environment Variables
 
-| Variable             | Required | Default                        | Description                                                     |
-| -------------------- | -------- | ------------------------------ | --------------------------------------------------------------- |
-| `ROUND_ID`           | Yes      | —                              | Marks the task as FML; identifies the training round            |
-| `MODEL_URI`          | No       | —                              | MQTT topic to subscribe for model data (fallback if HTTP fails) |
-| `HYPERPARAMS`        | No       | —                              | Hyperparameter string passed to the WASM module                 |
-| `COORDINATOR_URL`    | No       | `http://coordinator-http:8080` | FL coordinator service URL                                      |
-| `MODEL_REGISTRY_URL` | No       | `http://model-registry:8081`   | Model registry base URL                                         |
-| `DATA_STORE_URL`     | No       | `http://local-data-store:8083` | Dataset store base URL                                          |
+| Variable                    | Required | Default                        | Description                                                     |
+| --------------------------- | -------- | ------------------------------ | --------------------------------------------------------------- |
+| `ROUND_ID`                  | Yes      | —                              | Marks the task as FML; identifies the training round            |
+| `MODEL_URI`                 | No       | —                              | MQTT topic to subscribe for model data (fallback if HTTP fails) |
+| `HYPERPARAMS`               | No       | —                              | Hyperparameter string passed to the WASM module                 |
+| `MANAGER_COORDINATOR_URL`   | No       | `http://coordinator-http:8080` | FL coordinator service URL                                      |
+| `MODEL_REGISTRY_URL`        | No       | `http://model-registry:8081`   | Model registry base URL                                         |
+| `DATA_STORE_URL`            | No       | `http://local-data-store:8083` | Dataset store base URL                                          |
+| `FL_ROUND_ID`               | No       | —                              | Legacy FL round identifier (falls back to `ROUND_ID`)           |
+| `FL_FORMAT`                 | No       | `f32-delta`                    | FL update wire format reported in the results envelope          |
+| `FL_NUM_SAMPLES`            | No       | `1`                            | Number of local training samples reported in the update         |
 
 #### FML Data Fetch Flow
 
-1. **Model**: HTTP GET `<MODEL_REGISTRY_URL>/models/<version>` (version extracted from `MODEL_URI`). If HTTP fails, subscribes to `MODEL_URI` as an MQTT topic and waits for model data to arrive over MQTT.
+1. **Model**: HTTP GET `<MODEL_REGISTRY_URL>/models/<version>` (the version is parsed from the last segment of `MODEL_URI`, e.g. `.../global_model_v3`). If HTTP fails, the proplet falls back to the `MODEL_URI` MQTT subscription and waits for model data to arrive over MQTT.
 2. **Dataset**: HTTP GET `<DATA_STORE_URL>/datasets/<proplet_id>`.
 
 Both model and dataset responses are stored in memory (4 KB limit each). They are accessible inside the WASM module via the `get_model_data()` and `get_dataset_data()` host functions.
 
 Only `http://` URLs are supported for FML data fetching — HTTPS is not available on this platform.
+
+For FML tasks, results are published as an update to `fl/rounds/<round_id>/updates/<proplet_id>` instead of the standard results topic.
 
 ### WASM Reception
 
