@@ -5,6 +5,8 @@ description: Filesystem example
 
 This is a simple filesystem example. This WASI P1 module writes a file to a preopened directory, reads it back, and prints the result to stdout — verifying that the guest has read/write access to the host filesystem. For this example we need to enable preopened directories in the guest's configuration. To do this, we need to set the `PROPLET_DIRS` environment variable to `/tmp` in the guest's configuration.
 
+> For how preopened directories and HAL storage containers behave across multiple workloads, see [Wasm HAL Directory & File Binding](/hal-directory-binding).
+
 ```bash
 export PROPLET_DIRS="/tmp"
 ```

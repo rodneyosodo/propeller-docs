@@ -1,0 +1,150 @@
+---
+title: Wasm HAL Directory & File Binding
+description: How Propeller maps host files and volumes into WASM workloads — WASI preopened directories and per-task HAL storage containers — and how both behave when multiple workloads (containers) run concurrently.
+---
+
+The [Hardware Abstraction Layer](/hal) (HAL) exposes two distinct ways for a WASM workload to read and write files on the Proplet host. They differ in how they are configured, what the guest sees, and — most importantly — how they behave when **multiple workloads run on the same Proplet**.
+
+|                         | WASI preopened directories                 | HAL storage containers                        |
+| ----------------------- | ------------------------------------------ | --------------------------------------------- |
+| Interface               | Standard WASI `filesystem`                 | `elastic:hal` → `storage` WIT interface       |
+| Guest view              | Host directory tree (1:1 path mapping)     | Name-addressed object store                   |
+| Scope                   | Proplet-wide (`PROPLET_DIRS`)              | Per-task (`hal_storage_path`)                 |
+| Isolation between tasks | **Shared** — every task sees the same dirs | **Isolated** — each task gets its own root    |
+| Persistence             | Whatever the host filesystem provides      | On-disk under the task root                   |
+| Enable gate             | `PROPLET_DIRS` env var                     | `PROPLET_HAL_ENABLED=true` + embedded runtime |
+
+## WASI preopened directories (`PROPLET_DIRS`)
+
+The Proplet preopens each directory in the colon-separated `PROPLET_DIRS` list into **every** WASM instance it starts. The mapping is one-to-one: a host directory is exposed to the guest at the exact same path, with full read and write permissions.
+
+```bash
+export PROPLET_DIRS="/data:/models"
+./propeller-proplet
+```
+
+This is the equivalent of running a module directly with the Wasmtime CLI:
+
+```bash
+wasmtime --dir /data --dir /models ./workload.wasm
+```
+
+The same list is applied uniformly on all four instantiation paths:
+
+- Core (WASI Preview 1) modules
+- WASI Preview 2 components
+- Components with a custom export
+- Per-HTTP-request proxy component instances
+
+### Behavior with multiple containers
+
+Because `PROPLET_DIRS` is a Proplet-level setting, **all concurrent tasks share the exact same preopened directories**:
+
+- There is **no per-task namespacing or remapping**. You cannot expose host dir A as guest path B, nor give one task a different view from another. Every task sees the same paths with the same permissions.
+- **Concurrent writes collide.** If two tasks write to the same preopened path, they overwrite each other — the Proplet does not mediate or isolate them.
+- **There is no read-only option.** Every preopened directory is granted `DirPerms::all()` and `FilePerms::all()`.
+- **Silent failures.** If a path in `PROPLET_DIRS` does not exist or cannot be opened, the error is logged and the directory is simply skipped — the workload still starts, and you may not notice the mount is missing.
+
+If you need isolated, per-workload persistent storage, use the HAL storage containers below instead of raw preopened directories.
+
+## HAL storage containers
+
+The HAL `storage` interface provides an object store addressed by container name and object key. The Proplet backs it with `elastic_tee_hal::StorageInterface`.
+
+Each task gets its **own storage root**:
+
+- By default: `/tmp/proplet/hal-storage/<task-id>`
+- When the task request supplies `hal_storage_path`: that exact path
+
+Containers are created or opened by name and stored on disk as `container_<n>/` directories inside the task root, with one `.obj` file per object. The default per-task root is what keeps concurrent workloads from colliding on the `container_<n>` directories.
+
+### Behavior with multiple containers
+
+The per-task default root isolates tasks in the common case. However, a few caveats matter when several containers are involved:
+
+- **Handle-based on-disk naming.** The directory is named after an in-memory handle, not the container name. If two tasks are pointed at the **same** `hal_storage_path`, the mapping becomes order-dependent: the first container each task opens lands in the same `container_1/` directory, so a container name can map to different directories across tasks (or two different names can map to the same directory).
+- **The name → directory mapping is not persisted.** It lives only in memory for the lifetime of the `StorageInterface`. After a Proplet restart, re-opening a container by name allocates a new handle and a fresh `container_<n>/`, orphaning the previous data.
+- **`delete-container` does not remove data.** It is implemented as a close: the container is dropped from the in-memory map, but the on-disk directory and objects remain.
+- **Encryption keys are not persisted.** Container keys are generated in memory on create. A new runtime instance over the same directory re-rolls the key, so previously written encrypted objects can no longer be decrypted. Through the Proplet's WIT bridge, `create-container` and `open-container` both open containers unencrypted.
+
+> **Recommendation:** leave the default per-task roots in place. Set `hal_storage_path` on a task only when you explicitly want to share storage between two tasks on the same Proplet, and remember that the container-name mapping is not stable across restarts.
+
+## Enabling directory binding
+
+### Standalone Proplet
+
+| Variable                        | Value                                            | Effect                                                                               |
+| ------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `PROPLET_DIRS`                  | Colon-separated host paths, e.g. `/data:/models` | Preopens each path 1:1 into every WASM guest                                         |
+| `PROPLET_HAL_ENABLED`           | `true`                                           | Serves the `elastic:hal` interfaces (including `storage`) to P2 components           |
+| `PROPLET_EXTERNAL_WASM_RUNTIME` | `""` (empty)                                     | Uses the embedded Wasmtime runtime — the only one that serves HAL and preopened dirs |
+
+The embedded runtime is mandatory for HAL and preopened directories. With an external runtime (`PROPLET_EXTERNAL_WASM_RUNTIME=wasmtime`), the Proplet delegates to the `wasmtime` CLI, which exposes none of the HAL interfaces and only preopens dirs you pass on its command line.
+
+### Docker Compose
+
+With the Proplet in Docker, paths inside `PROPLET_DIRS` are container paths, so each preopened directory must also be mounted into the container at the same location. `docker/compose.propeller.yaml` wires this up:
+
+```yaml
+services:
+  proplet:
+    environment:
+      PROPLET_DIRS: ${PROPLET_DIRS}
+    volumes:
+      # HAL storage persistence — survives container restarts.
+      - hal-storage:/tmp/proplet/hal-storage
+      # Preopened dirs: mount each PROPLET_DIRS path into the container
+      # at the same location (example below).
+      # - type: bind
+      #   source: ./wasi-data
+      #   target: /wasi-data
+
+volumes:
+  hal-storage:
+```
+
+Then in `docker/.env`:
+
+```bash
+# Colon-separated dirs preopened into every WASM guest (container paths).
+PROPLET_DIRS=""
+```
+
+and enable the HAL path:
+
+```bash
+PROPLET_HAL_ENABLED=true
+PROPLET_EXTERNAL_WASM_RUNTIME=""   # embedded runtime serves the HAL
+```
+
+To expose a host directory to workloads, mount it and preopen it:
+
+```bash
+PROPLET_DIRS="/wasi-data"
+```
+
+```yaml
+volumes:
+  - type: bind
+    source: ./wasi-data
+    target: /wasi-data
+```
+
+### Task-level storage root
+
+The Manager forwards `hal_storage_path` on the task request to the Proplet. When unset, the Proplet derives `/tmp/proplet/hal-storage/<task-id>`.
+
+```bash
+curl -X POST "http://localhost:7070/tasks" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "shared-worker", "hal_storage_path": "/tmp/proplet/hal-storage/shared"}'
+```
+
+## Reference
+
+| File binding           | Configuration                                     | Isolation                  | Persistence                 |
+| ---------------------- | ------------------------------------------------- | -------------------------- | --------------------------- |
+| WASI preopened dirs    | `PROPLET_DIRS` (Proplet env)                      | None — shared by all tasks | Host filesystem             |
+| HAL storage containers | `hal_storage_path` (task) / default per-task root | Per-task root by default   | On disk under the task root |
+
+See the [Filesystem example](/examples/filesystem) for a minimal WASI workload that exercises a preopened directory.

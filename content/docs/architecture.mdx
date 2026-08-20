@@ -56,22 +56,21 @@ Currently, the system supports **1 manager : multiple proplets**. In the future,
 
 ### Kubernetes Operator
 
-The [Propeller Kubernetes Operator](https://github.com/absmach/propeller-k8s-operator) provides a way to deploy and manage Propeller on Kubernetes clusters. It handles the orchestration of tasks across proplets, scheduling, and resource management. The Operator is responsible for:
+The [Propeller Kubernetes Operator](https://github.com/absmach/propeller-k8s-operator) is a Kubernetes operator that manages and schedules **WebAssembly (WASM) tasks** on a hybrid fleet of workers, which can be either Kubernetes pods or external devices. It introduces two primitives — **Proplet**, the hybrid worker resource (k8s or external), and **Task**, the canonical task API — plus supporting Custom Resources for batching and federated learning:
 
-**Deployment and Management:**
+**Custom Resources:**
 
-- Deploying Propeller components (Manager, Proplet, Proxy)
-- Managing Propeller components (scaling, restarting, monitoring)
+- `Proplet`: a worker node. The operator creates and reconciles a Kubernetes `Deployment` for `k8s`-type proplets and monitors `external` devices over MQTT; no K8s resources are created for the latter.
+- `Task`: the smallest unit of work, a single WASM workload executed by a proplet. The module comes from an embedded `file` (base64 bytes) or an `imageUrl` — an OCI registry reference resolved through the registry proxy. `imageUrl` is a WASM module reference, never a container image; the operator never runs it as one.
+- `PropellerJob`: groups multiple `Task`s into a managed batch with `parallel`, `sequential`, or `configurable` execution modes.
+- `FederatedJob` and `TrainingRound`: orchestrate multi-round federated learning experiments layered on top of `Task`, with k-of-n update aggregation.
 
-**Resource Management:**
+**Key Behaviors:**
 
-- Monitoring and scaling proplets based on resource utilization
-- Dynamically adjusting proplet count based on workload demand
+- Tasks always dispatch to the proplet's own Wasmtime runtime via MQTT, regardless of whether the proplet is `k8s` or `external`.
+- The operator reconciles proplet Deployments, schedules WASM workloads, and aggregates results through its controllers: `PropletReconciler`, `TaskReconciler`, `PropellerJobReconciler`, `FederatedJobReconciler`, and `TrainingRoundReconciler`.
 
-**Security and Compliance:**
-
-- Ensuring secure communication and deployment of Propeller components
-- Compliance with privacy regulations and best practices
+See the [Kubernetes Operator](/k8s/operator) documentation for the full architecture.
 
 ### Proplet
 

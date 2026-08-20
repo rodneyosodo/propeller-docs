@@ -91,6 +91,50 @@ paths:
         required: true
         schema:
           type: string
+  /proplets/{PROPLET_ID}/alive-history:
+    get:
+      summary: Get Proplet Alive History
+      description: Get the paginated heartbeat history for a proplet
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Proplet alive history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  offset:
+                    type: integer
+                  limit:
+                    type: integer
+                  total:
+                    type: integer
+                  history:
+                    type: array
+                    items:
+                      type: string
+                      format: date-time
+                    description: Heartbeat timestamps, newest last
+        "404":
+          description: Proplet not found
+      tags:
+        - Manager
+        - Proplets
+    parameters:
+      - name: PROPLET_ID
+        in: path
+        required: true
+        schema:
+          type: string
   /proplets:
     get:
       summary: List Proplets

@@ -20,11 +20,11 @@ git remote add upstream https://github.com/absmach/propeller.git
 To build Propeller, you will need the following:
 
 - [A Go compiler (Go 1.26.0)](https://go.dev/doc/install)
-- [Rust](https://rustup.rs/) (required for `make proplet` and `make all`)
+- [Rust (1.97.1)](https://rustup.rs/) (required for `make proplet` and `make all`)
 - [Make](https://www.gnu.org/software/make/manual/make.html)
-- [Docker](https://docs.docker.com/) (required for `make start-base` and Docker image builds)
-- [Wasmtime](https://wasmtime.dev/) (required to test compiled Wasm examples locally)
-- [TinyGo](https://tinygo.org/getting-started/install/) (required for Wasm example builds)
+- [Docker (29.6.2)](https://docs.docker.com/) (required for `make start-base` and Docker image builds)
+- [Wasmtime (47.0.2)](https://wasmtime.dev/) (required to test compiled Wasm examples locally)
+- [TinyGo (0.41.1)](https://tinygo.org/getting-started/install/) (required for Wasm example builds)
 - [Mockery](https://vektra.github.io/mockery/latest/installation/) (required for `make test` and `make test-all`)
 
 ### Downloading Pre-built Binaries
@@ -77,18 +77,38 @@ This is useful for testing the core services without a full development environm
 
 To build Propeller for other platforms, use the following:
 
-| OS      | Architecture | Command                              |
-| ------- | ------------ | ------------------------------------ |
-| Linux   | amd64        | `GOOS=linux GOARCH=amd64 make all`   |
-| Linux   | arm64        | `GOOS=linux GOARCH=arm64 make all`   |
-| Windows | amd64        | `GOOS=windows GOARCH=amd64 make all` |
-| Darwin  | amd64        | `GOOS=darwin GOARCH=amd64 make all`  |
+| OS    | Architecture | Command                                            |
+| ----- | ------------ | -------------------------------------------------- |
+| Linux | amd64        | `GOOS=linux GOARCH=amd64 make all`                 |
+| Linux | arm64        | `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 make all`   |
+| Linux | riscv64      | `GOOS=linux GOARCH=riscv64 CGO_ENABLED=0 make all` |
+
+> `make all` also compiles the Rust proplet, which always targets your **host**
+> architecture. When cross-compiling (`GOARCH != host`), the Go services are
+> built for the target platform, but the proplet is still built for the host.
+> Build the proplet for a non-native target separately — see
+> [Building Proplet (Rust) for ARM](#building-proplet-rust-for-arm).
 
 #### Cross-compiling
 
-To cross-compile for other architectures on your local machine, you need to install the appropriate cross-compilation toolchain.
+The `manager` links cgo packages — [`mattn/go-sqlite3`](https://github.com/mattn/go-sqlite3) for SQLite storage and [`wasmtime-go`](https://github.com/bytecodealliance/wasmtime-go) for the Wasm plugin — so it requires a C compiler. `cli` and `proxy` are pure Go and cross-compile without any special toolchain.
+
+You have two options for cross-compiling the `manager`:
+
+1. **Static cgo-free build (recommended)** — set `CGO_ENABLED=0` on the `make` command line. This overrides the `manager` target's default of `CGO_ENABLED=1` (see the Makefile) and produces a statically linked binary with no external C toolchain. SQLite storage and the Wasm plugin are compiled out; `memory` and `badger` storage still work.
+2. **Keep cgo enabled** — install a cross C compiler and point `CC`/`CXX` at it. This keeps SQLite storage and the Wasm plugin, at the cost of installing the cross toolchain.
+
+```bash
+# Option 1: static build, no cross C toolchain required
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 make all
+
+# Option 2: keep cgo (SQLite + Wasm plugin) using a cross compiler
+GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ make manager
+```
 
 ##### Installing Cross-compilation Toolchains
+
+The cross C toolchains below are required for the **Rust proplet** cross-build and for **option 2** (a cgo-enabled `manager`). They are not needed for `CGO_ENABLED=0` Go builds.
 
 On Debian/Ubuntu, install the required toolchains:
 
@@ -115,10 +135,10 @@ brew install riscv64-unknown-linux-gnu
 
 ##### Building for ARM on Linux
 
-Once the toolchains are installed, you can cross-compile:
+Cross-compile the Go services for Linux ARM targets:
 
 ```bash
-# Build for ARM64
+# Build for ARM64 (static, cgo-free)
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 make all
 
 # Build for RISC-V 64-bit
@@ -128,9 +148,14 @@ GOOS=linux GOARCH=riscv64 CGO_ENABLED=0 make all
 GOOS=linux GOARCH=arm CGO_ENABLED=0 make all
 ```
 
+> The `manager` target defaults to `CGO_ENABLED=1` (see the Makefile), but a
+> `CGO_ENABLED=0` value on the `make` command line overrides it. Without cgo,
+> SQLite storage and the Wasm plugin are unavailable — run the manager with
+> `MANAGER_STORAGE_TYPE=memory` or `badger`.
+
 ##### Building Proplet (Rust) for ARM
 
-For the Rust-based proplet, use the following:
+The Rust proplet is **not** cross-compiled by `make all`; it is always built for your host architecture. To build it for another architecture:
 
 ```bash
 # Install the target
@@ -155,17 +180,17 @@ cargo build --release --target riscv64gc-unknown-linux-gnu
 
 ##### Building for ARM on macOS
 
-Building for ARM on macOS (Apple Silicon) is straightforward since the native compiler supports ARM64:
+The Go services (including the cgo-enabled `manager`) build natively on Apple Silicon without extra tooling:
 
 ```bash
 # ARM64 (native)
-GOOS=darwin GOARCH=arm64 make all
+GOOS=darwin GOARCH=arm64 make manager cli proxy
 
 # x86_64 (Intel macs)
-GOOS=darwin GOARCH=amd64 make all
+GOOS=darwin GOARCH=amd64 make manager cli proxy
 ```
 
-Note: Cross-compiling from Intel macOS to ARM64 requires macOS SDK and is not directly supported. Consider using GitHub Actions for cross-platform builds.
+The Rust proplet does **not** build on macOS or Windows — it depends on Linux kernel headers (e.g. `loopdev` from guest-components). Use a Linux environment or GitHub Actions to build the proplet. Cross-compiling from Intel macOS to ARM64 requires the macOS SDK and is not directly supported.
 
 #### Building an individual service
 
@@ -221,7 +246,8 @@ Propeller includes two Rust crate SDKs for extending behaviour via WebAssembly p
 Build both with:
 
 ```bash
-cargo build --release --workspace --manifest-path crates/Cargo.toml
+cargo build --release --workspace --manifest-path crates/propeller-plugin-sdk/Cargo.toml
+cargo build --release --workspace --manifest-path crates/propeller-proplet-plugin-sdk/Cargo.toml
 ```
 
 For authoring plugins, see the [Plugins](/plugins) documentation and the [plugin-auth](https://github.com/absmach/propeller/tree/main/examples/plugin-auth) and [proplet-plugin-example](https://github.com/absmach/propeller/tree/main/examples/proplet-plugin-example) examples.
@@ -262,9 +288,9 @@ make install
 Example output:
 
 ```bash
-cp build/cli /home/jeff/go/bin/propeller-cli
-cp build/manager /home/jeff/go/bin/propeller-manager
-cp build/proxy /home/jeff/go/bin/propeller-proxy
+cp build/cli ~/go/bin/propeller-cli
+cp build/manager ~/go/bin/propeller-manager
+cp build/proxy ~/go/bin/propeller-proxy
 ```
 
 The `make install` target copies binaries from the `build` directory to `$GOBIN` with a `propeller-` prefix. The `$GOBIN` variable **must** be set before running `make install`, or the command will fail with a permission error. If `$GOBIN` is not set, it defaults to `$HOME/go/bin`.
@@ -353,16 +379,14 @@ Example output:
 
 ```bash
 docker compose -f docker/compose.yaml --env-file docker/.env up -d
-[+] Running 9/9
- ✔ Network propeller-base-net              Created                                                                                  0.1s
- ✔ Volume propeller-atom-db-volume         Created                                                                                  0.1s
- ✔ Volume propeller-fluxmq-node1-volume    Created                                                                                  0.1s
- ✔ Container propeller-atom-db             Started                                                                                  2.5s
- ✔ Container propeller-atom                Started                                                                                  5.1s
- ✔ Container propeller-atom-ui             Started                                                                                  5.3s
- ✔ Container propeller-fluxmq-auth         Started                                                                                  5.5s
- ✔ Container propeller-fluxmq-node1        Started                                                                                  5.9s
- ✔ Container propeller-nginx               Started                                                                                  6.5s
+[+] up 7/7
+ ✔ Container propeller-fluxmq-node1 Running                                                                                                                                     0.0s
+ ✔ Container propeller-fluxmq-auth  Running                                                                                                                                     0.0s
+ ✔ Container propeller-nginx        Running                                                                                                                                     0.0s
+ ✔ Container propeller-jaeger       Running                                                                                                                                     0.0s
+ ✔ Container propeller-atom-db      Healthy                                                                                                                                     0.5s
+ ✔ Container propeller-atom         Healthy                                                                                                                                     1.0s
+ ✔ Container propeller-atom-ui      Running                                                                                                                                     0.0s
 ```
 
 - Docker must be installed and running
@@ -433,18 +457,34 @@ Once services are running, verify they connected to MQTT:
 **Manager logs** (healthy state):
 
 ```
-{"time":"2026-02-11T16:57:43.883167345Z","level":"INFO","msg":"Subscribe to MQTT topic completed successfully","duration":"60.157736ms"}
-{"time":"2026-02-11T16:57:43.883519119Z","level":"INFO","msg":"manager service http server listening at manager:7070 without TLS"}
+{"time":"2026-07-31T10:36:22.215275551Z","level":"INFO","msg":"MQTT connection established"}
+{"time":"2026-07-31T10:36:22.244721274Z","level":"WARN","msg":"MANAGER_COORDINATOR_URL not configured - FL features will not be available"}
+{"time":"2026-07-31T10:36:22.428315303Z","level":"INFO","msg":"Subscribe to MQTT topic completed successfully","duration":"183.383289ms"}
+{"time":"2026-07-31T10:36:22.428427657Z","level":"INFO","msg":"Recover interrupted tasks completed successfully","duration":"17.263µs"}
+{"time":"2026-07-31T10:36:22.428646062Z","level":"INFO","msg":"cron scheduler started","check_interval":60000000000}
+{"time":"2026-07-31T10:36:22.428710044Z","level":"INFO","msg":"manager service HTTP server listening at manager:7070"}
+{"time":"2026-07-31T10:36:22.797370311Z","level":"INFO","msg":"successfully created proplet"}
 ```
 
 **Proplet logs** (healthy state):
 
 ```
-2026-02-11T17:34:32.841840Z  INFO Starting Proplet (Rust) - Instance ID: f34cddff-2855-4e3f-9b55-9d83b982b315
-2026-02-11T17:34:32.877439Z DEBUG Published to topic: m/fcf50e58-a080-4179-a260-e91cdf8fc1c2/c/8259a673-ab09-4b97-8c09-e1f9e60c7c2c/control/proplet/create
-2026-02-11T17:34:32.877443Z  INFO Published discovery message
-2026-02-11T17:34:32.877463Z  INFO Subscribed to topic: m/fcf50e58-a080-4179-a260-e91cdf8fc1c2/c/8259a673-ab09-4b97-8c09-e1f9e60c7c2c/control/manager/start
-2026-02-11T17:34:32.877467Z  INFO Subscribed to topic: m/fcf50e58-a080-4179-a260-e91cdf8fc1c2/c/8259a673-ab09-4b97-8c09-e1f9e60c7c2c/control/manager/stop
+{"timestamp":"2026-07-31T10:36:22.126178Z","level":"INFO","fields":{"message":"Starting Proplet (Rust) - Client ID: 7fe414f2-ec79-4ae9-9f8f-32213f473024"}}
+{"timestamp":"2026-07-31T10:36:22.126312Z","level":"INFO","fields":{"message":"MQTT client created (TLS: false)"}}
+{"timestamp":"2026-07-31T10:36:22.126492Z","level":"INFO","fields":{"message":"Starting MQTT event loop"}}
+{"timestamp":"2026-07-31T10:36:22.126681Z","level":"INFO","fields":{"message":"Using external Wasm runtime: wasmtime"}}
+{"timestamp":"2026-07-31T10:36:22.128103Z","level":"INFO","fields":{"message":"Telemetry server listening on 0.0.0.0:9092"}}
+{"timestamp":"2026-07-31T10:36:22.153216Z","level":"INFO","fields":{"message":"Starting PropletService"}}
+{"timestamp":"2026-07-31T10:36:22.162750Z","level":"INFO","fields":{"message":"Published discovery message"}}
+{"timestamp":"2026-07-31T10:36:22.162769Z","level":"INFO","fields":{"message":"Subscribed to topic: m/c676fdcf-4682-4c06-ad85-968c4f3b7642/c/26453a49-20e8-4d67-ad20-7de663bda008/control/manager/start"}}
+{"timestamp":"2026-07-31T10:36:22.162773Z","level":"INFO","fields":{"message":"Subscribed to topic: m/c676fdcf-4682-4c06-ad85-968c4f3b7642/c/26453a49-20e8-4d67-ad20-7de663bda008/control/manager/stop"}}
+{"timestamp":"2026-07-31T10:36:22.162776Z","level":"INFO","fields":{"message":"Subscribed to topic: m/c676fdcf-4682-4c06-ad85-968c4f3b7642/c/26453a49-20e8-4d67-ad20-7de663bda008/registry/server"}}
+{"timestamp":"2026-07-31T10:36:22.172227Z","level":"INFO","fields":{"message":"MQTT session not present, triggering re-subscription"}}
+{"timestamp":"2026-07-31T10:36:22.172408Z","level":"INFO","fields":{"message":"Reconnection detected, re-subscribing to topics"}}
+{"timestamp":"2026-07-31T10:36:22.172443Z","level":"INFO","fields":{"message":"Subscribed to topic: m/c676fdcf-4682-4c06-ad85-968c4f3b7642/c/26453a49-20e8-4d67-ad20-7de663bda008/control/manager/start"}}
+{"timestamp":"2026-07-31T10:36:22.172451Z","level":"INFO","fields":{"message":"Subscribed to topic: m/c676fdcf-4682-4c06-ad85-968c4f3b7642/c/26453a49-20e8-4d67-ad20-7de663bda008/control/manager/stop"}}
+{"timestamp":"2026-07-31T10:36:22.172458Z","level":"INFO","fields":{"message":"Subscribed to topic: m/c676fdcf-4682-4c06-ad85-968c4f3b7642/c/26453a49-20e8-4d67-ad20-7de663bda008/registry/server"}}
+{"timestamp":"2026-07-31T10:36:22.172463Z","level":"INFO","fields":{"message":"Successfully re-subscribed to topics after reconnection"}}
 ```
 
 ### Stopping Base Services
@@ -484,7 +524,7 @@ The Go services are built using the following matrix:
 | linux | arm64        | proxy   |
 | linux | riscv64      | proxy   |
 
-The build uses `CGO_ENABLED=0` for static binaries and cross-compiles using GCC cross-compilers installed via apt.
+The Go services are built with `CGO_ENABLED=0` for static binaries, so they cross-compile without extra toolchains. The GCC cross-compilers installed via apt are used only for the Rust proplet job.
 
 ##### Proplet (Rust) Build
 
@@ -545,11 +585,12 @@ propeller-manager
 Expected output:
 
 ```json
-{"time":"2026-02-13T12:12:38.938209887+03:00","level":"INFO","msg":"MQTT connection established"}
-{"time":"2026-02-13T12:12:38.938257698+03:00","level":"WARN","msg":"MANAGER_COORDINATOR_URL not configured - FL features will not be available"}
-{"time":"2026-02-13T12:12:38.964151961+03:00","level":"INFO","msg":"Subscribe to MQTT topic completed successfully","duration":"25.777171ms"}
-{"time":"2026-02-13T12:12:38.964414628+03:00","level":"INFO","msg":"cron scheduler started","check_interval":60000000000}
-{"time":"2026-02-13T12:12:38.964522773+03:00","level":"INFO","msg":"manager service http server listening at localhost:7070 without TLS"}
+{"time":"2026-07-31T10:36:22.215275551Z","level":"INFO","msg":"MQTT connection established"}
+{"time":"2026-07-31T10:36:22.244721274Z","level":"WARN","msg":"MANAGER_COORDINATOR_URL not configured - FL features will not be available"}
+{"time":"2026-07-31T10:36:22.428315303Z","level":"INFO","msg":"Subscribe to MQTT topic completed successfully","duration":"183.383289ms"}
+{"time":"2026-07-31T10:36:22.428427657Z","level":"INFO","msg":"Recover interrupted tasks completed successfully","duration":"17.263µs"}
+{"time":"2026-07-31T10:36:22.428646062Z","level":"INFO","msg":"cron scheduler started","check_interval":60000000000}
+{"time":"2026-07-31T10:36:22.428710044Z","level":"INFO","msg":"manager service HTTP server listening at manager:7070"}
 ```
 
 The manager exposes an HTTP API on `localhost:7070`.
@@ -565,15 +606,16 @@ propeller-proplet
 Expected output:
 
 ```
-2026-02-13T09:13:11.246621Z  INFO Starting Proplet (Rust) - Instance ID: 67b2bcb2-9c56-4c57-b163-085d6ec2c313
-2026-02-13T09:13:11.249067Z  INFO MQTT client created (TLS: false)
-2026-02-13T09:13:11.249145Z  INFO Using Wasmtime runtime
-2026-02-13T09:13:11.249230Z  INFO Starting MQTT event loop
-2026-02-13T09:13:11.739449Z  INFO Starting PropletService
-2026-02-13T09:13:11.739491Z  INFO Published discovery message
-2026-02-13T09:13:11.739499Z  INFO Subscribed to topic: m/.../control/manager/start
-2026-02-13T09:13:11.739507Z  INFO Subscribed to topic: m/.../control/manager/stop
-2026-02-13T09:13:11.739517Z  INFO Subscribed to topic: m/.../registry/server
+{"timestamp":"2026-07-31T10:36:22.126178Z","level":"INFO","fields":{"message":"Starting Proplet (Rust) - Client ID: 7fe414f2-ec79-4ae9-9f8f-32213f473024"}}
+{"timestamp":"2026-07-31T10:36:22.126312Z","level":"INFO","fields":{"message":"MQTT client created (TLS: false)"}}
+{"timestamp":"2026-07-31T10:36:22.126492Z","level":"INFO","fields":{"message":"Starting MQTT event loop"}}
+{"timestamp":"2026-07-31T10:36:22.126681Z","level":"INFO","fields":{"message":"Using external Wasm runtime: wasmtime"}}
+{"timestamp":"2026-07-31T10:36:22.128103Z","level":"INFO","fields":{"message":"Telemetry server listening on 0.0.0.0:9092"}}
+{"timestamp":"2026-07-31T10:36:22.153216Z","level":"INFO","fields":{"message":"Starting PropletService"}}
+{"timestamp":"2026-07-31T10:36:22.162750Z","level":"INFO","fields":{"message":"Published discovery message"}}
+{"timestamp":"2026-07-31T10:36:22.162769Z","level":"INFO","fields":{"message":"Subscribed to topic: m/c676fdcf-4682-4c06-ad85-968c4f3b7642/c/26453a49-20e8-4d67-ad20-7de663bda008/control/manager/start"}}
+{"timestamp":"2026-07-31T10:36:22.162773Z","level":"INFO","fields":{"message":"Subscribed to topic: m/c676fdcf-4682-4c06-ad85-968c4f3b7642/c/26453a49-20e8-4d67-ad20-7de663bda008/control/manager/stop"}}
+{"timestamp":"2026-07-31T10:36:22.162776Z","level":"INFO","fields":{"message":"Subscribed to topic: m/c676fdcf-4682-4c06-ad85-968c4f3b7642/c/26453a49-20e8-4d67-ad20-7de663bda008/registry/server"}}
 ```
 
 The proplet automatically registers itself with the manager.
@@ -594,10 +636,11 @@ propeller-proxy
 Expected output:
 
 ```json
-{"time":"2026-02-13T12:14:14.683354969+03:00","level":"INFO","msg":"MQTT connection established"}
-{"time":"2026-02-13T12:14:14.683506536+03:00","level":"INFO","msg":"successfully initialized MQTT and HTTP config"}
-{"time":"2026-02-13T12:14:14.683571649+03:00","level":"INFO","msg":"starting proxy service"}
-{"time":"2026-02-13T12:14:14.705055456+03:00","level":"INFO","msg":"successfully subscribed to topic"}
+{"time":"2026-07-31T14:28:21.896489814+03:00","level":"INFO","msg":"successfully initialized MQTT and HTTP config"}
+{"time":"2026-07-31T14:28:21.89656186+03:00","level":"INFO","msg":"starting proxy service"}
+{"time":"2026-07-31T14:28:21.896517887+03:00","level":"INFO","msg":"MQTT connection established"}
+{"time":"2026-07-31T14:28:21.942002962+03:00","level":"INFO","msg":"successfully subscribed to topic"}
+{"time":"2026-07-31T14:28:21.942081961+03:00","level":"INFO","msg":"health server listening","addr":":9191"}
 ```
 
 ### Postman Collection

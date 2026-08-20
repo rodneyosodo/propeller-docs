@@ -17,13 +17,13 @@ The script has two phases controlled by a positional argument:
 
 On first boot, cloud-init runs unattended and:
 
-1. Installs system packages (`build-essential`, `libssl-dev`, `protobuf-compiler`, `libtss2-dev`, `tpm2-tools`, `rustup`, and others)
+1. Installs system packages (`build-essential`, `libssl-dev`, `protobuf-compiler`, `libtss2-dev`, `tpm2-tools`, `mosquitto-clients`, `rustup`, and others)
 2. Installs the Rust toolchain via `rustup`
-3. Downloads and installs the latest Wasmtime release binary from GitHub
-4. Clones and compiles the **Attestation Agent** from [guest-components](https://github.com/confidential-containers/guest-components) with all attesters enabled
+3. Downloads and installs Wasmtime v44.0.0 from GitHub
+4. Clones and compiles the **Attestation Agent** from [guest-components](https://github.com/rodneyosodo/guest-components) (`upstream-proplet` branch) with all attesters enabled
 5. Clones and compiles the **CoCo Keyprovider** for OCI image decryption
 6. Clones and compiles **Proplet** from the Propeller repository
-7. Verifies all four binaries exist before enabling any services
+7. Verifies all four binaries (`wasmtime`, `attestation-agent`, `coco_keyprovider`, `proplet`) and the OCI decrypt config exist before enabling any services
 8. Enables and starts three systemd services: `attestation-agent`, `coco-keyprovider`, and `proplet`
 
 ## Install dependencies
@@ -176,19 +176,31 @@ Reads from `/etc/default/proplet`. Waits for both `127.0.0.1:50010` and `127.0.0
 Key values written into `/etc/default/proplet`:
 
 ```bash
+PROPLET_MQTT_TIMEOUT=30
+PROPLET_MQTT_QOS=2
 PROPLET_EXTERNAL_WASM_RUNTIME=/usr/local/bin/wasmtime
-PROPLET_KBS_URI=http://10.0.2.2:8082
-PROPLET_AA_CONFIG_PATH=/etc/default/proplet.toml
-PROPLET_LAYER_STORE_PATH=/tmp/proplet/layers
+PROPLET_LIVELINESS_INTERVAL=10
 PROPLET_ENABLE_MONITORING=true
+PROPLET_MANAGER_K8S_NAMESPACE=default
+PROPLET_KBS_URI=http://10.0.2.2:8082
+PROPLET_AA_CONFIG_PATH=/etc/attestation-agent.conf
+PROPLET_LAYER_STORE_PATH=/tmp/proplet/layers
 ```
 
-The Attestation Agent config at `/etc/default/proplet.toml`:
+The Attestation Agent config at `/etc/attestation-agent.conf`:
 
 ```toml
 [token_configs]
-[token_configs.coco_kbs]
+
+[token_configs.kbs]
 url = "http://10.0.2.2:8082"
+
+[eventlog_config]
+init_pcr = 17
+enable_eventlog = false
+
+[log]
+level = "info"
 ```
 
 The OCI decrypt keyprovider config at `/etc/ocicrypt_keyprovider.conf`:
