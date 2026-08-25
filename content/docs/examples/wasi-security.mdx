@@ -1,0 +1,404 @@
+---
+title: WASI Security Policy
+description: Two example Rust workloads that read and write files, run under per-task WASI security policies
+---
+
+This example runs the **same Wasm binary** three times under three different [WASI security policies](/wasi-security) and watches its filesystem access change: writes allowed, writes denied, and the filesystem removed entirely.
+
+Everything here uses WASI Preview 2 command components built from Rust with the `wasm32-wasip2` target.
+
+## Prerequisites
+
+- A running Propeller stack (Manager + Proplet) — see [Getting Started](/getting-started).
+- The Proplet running the **embedded** Wasmtime runtime (`PROPLET_EXTERNAL_WASM_RUNTIME=""`). An external runtime ignores policies.
+- `propeller-cli` on your `PATH` (`make install` in the Propeller repository).
+- A Rust toolchain with the WASI target:
+
+  ```bash
+  rustup target add wasm32-wasip2
+  ```
+
+- `jq` for the `curl` section.
+
+## The workload
+
+A minimal Rust program that writes a file, reads it back, and prints what happened. It never panics on an I/O error — it reports the error kind instead, so a denied operation still produces a completed task whose output shows the denial.
+
+```bash
+cargo new --bin file-writer
+cd file-writer
+mkdir .cargo
+```
+
+`.cargo/config.toml` — build for WASI Preview 2 by default:
+
+```toml
+[build]
+target = "wasm32-wasip2"
+```
+
+`src/main.rs`:
+
+```rust
+use std::fs;
+use std::io::Write;
+
+fn main() {
+    println!("file-writer: WASI filesystem check");
+
+    // The guest paths below are what the policy maps host directories onto.
+    report("write /data/report.txt", write_file("/data/report.txt"));
+    report("read  /data/report.txt", read_file("/data/report.txt"));
+    report("list  /data", list_dir("/data"));
+}
+
+fn write_file(path: &str) -> std::io::Result<String> {
+    let body = "written by the guest\n";
+    let mut file = fs::File::create(path)?;
+    file.write_all(body.as_bytes())?;
+
+    Ok(format!("{} bytes", body.len()))
+}
+
+fn read_file(path: &str) -> std::io::Result<String> {
+    let body = fs::read_to_string(path)?;
+
+    Ok(format!("{:?}", body.trim_end()))
+}
+
+fn list_dir(path: &str) -> std::io::Result<String> {
+    let mut names: Vec<String> = fs::read_dir(path)?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+
+    Ok(names.join(", "))
+}
+
+fn report(label: &str, outcome: std::io::Result<String>) {
+    match outcome {
+        Ok(detail) => println!("  ALLOWED  {label} -> {detail}"),
+        Err(err) => println!("  DENIED   {label} -> {:?}: {err}", err.kind()),
+    }
+}
+```
+
+Build it:
+
+```bash
+cargo build --release
+# -> target/wasm32-wasip2/release/file-writer.wasm
+```
+
+## Host directories
+
+The policy maps **host** directories into the guest, so they have to exist on the machine running the Proplet — and the Proplet's user has to be able to open them. This example keeps everything under `/tmp/propeller-demo`:
+
+```bash
+mkdir -p /tmp/propeller-demo/models /tmp/propeller-demo/data
+echo "v1 model weights" > /tmp/propeller-demo/models/weights.txt
+```
+
+> If the Proplet runs in Docker, these are paths **inside the container**, and the container's `/tmp` is not your host's. Bind-mount them in `docker/compose.propeller.yaml` first, otherwise the policy names a directory that does not exist and the task fails at start:
+>
+> ```yaml
+> services:
+>   proplet:
+>     volumes:
+>       - ./task-data:/tmp/propeller-demo/data
+>       - ./models:/tmp/propeller-demo/models:ro
+> ```
+
+A policy entry that cannot be preopened **fails the task** rather than silently granting less — that is the whole point of the exclusive-storage rule.
+
+## 1. A read-write mount
+
+`policy-rw.toml`:
+
+```toml
+version = "0.0.1"
+
+[storage]
+# host::guest — the guest sees /data, the host writes land in /tmp/propeller-demo/data.
+mount = ["/tmp/propeller-demo/data::/data"]
+```
+
+Create the task with the policy attached, upload the binary, and start it:
+
+```bash
+propeller-cli tasks create "_start" --wasi-security ./policy-rw.toml
+```
+
+```json
+{
+  "created_at": "2026-08-25T17:10:51.324926746+02:00",
+  "finish_time": "0001-01-01T00:00:00Z",
+  "id": "05dd6ab3-b14c-4af7-91ab-a5a26f133a1a",
+  "kind": "standard",
+  "metadata": {
+    "elastic": {
+      "wasi_security": "version = \"0.0.1\"\n\n[storage]\n# host::guest — the guest sees /data, the host writes land in /tmp/propeller-demo/data.\nmount = [\"/tmp/propeller-demo/data::/data\"]\n\n"
+    }
+  },
+  "name": "_start",
+  "priority": 50,
+  "start_time": "0001-01-01T00:00:00Z",
+  "updated_at": "0001-01-01T00:00:00Z"
+}
+```
+
+```bash
+export TASK_ID=05dd6ab3-b14c-4af7-91ab-a5a26f133a1a
+
+propeller-cli tasks upload "$TASK_ID" ./target/wasm32-wasip2/release/file-writer.wasm
+propeller-cli tasks start "$TASK_ID"
+propeller-cli tasks results "$TASK_ID"
+```
+
+`tasks results` prints the stored results as JSON, so the guest's output comes back as one escaped string. To read it as plain text, pipe the results endpoint through `jq -r`:
+
+```bash
+curl -sS "http://localhost:7070/tasks/$TASK_ID/results" | jq -r '.results'
+```
+
+The output is:
+
+```text
+file-writer: WASI filesystem check
+  ALLOWED  write /data/report.txt -> 21 bytes
+  ALLOWED  read  /data/report.txt -> "written by the guest"
+  ALLOWED  list  /data -> report.txt
+```
+
+And on the host:
+
+```bash
+cat /tmp/propeller-demo/data/report.txt
+# written by the guest
+```
+
+The guest never learned it was writing to `/tmp/propeller-demo/data` — it only ever saw `/data`.
+
+## 2. The same binary, read-only
+
+`policy-ro.toml`:
+
+```toml
+version = "0.0.1"
+
+[storage]
+readonly = ["/tmp/propeller-demo/data::/data"]
+```
+
+Point the existing task at the new policy and run it again:
+
+```bash
+propeller-cli tasks stop "$TASK_ID"
+
+propeller-cli tasks update "$TASK_ID" --wasi-security ./policy-ro.toml
+propeller-cli tasks start "$TASK_ID"
+
+propeller-cli tasks results "$TASK_ID"
+# or
+curl -sS "http://localhost:7070/tasks/$TASK_ID/results" | jq -r '.results'
+```
+
+```text
+file-writer: WASI filesystem check
+  DENIED   write /data/report.txt -> PermissionDenied: Operation not permitted (os error 63)
+  ALLOWED  read  /data/report.txt -> "written by the guest"
+  ALLOWED  list  /data -> report.txt
+```
+
+The read still works — `report.txt` is the file the previous run wrote — but the write is refused by the runtime. The exact error text comes from the Rust standard library and may vary between toolchains.
+
+> `tasks update` replaces the whole `metadata` map. Any free-form labels on the task must be passed again with `--metadata`; other `metadata.elastic` keys (such as `--wasi-pep`) are preserved for you by the CLI.
+
+## 3. No storage at all
+
+A policy with no `[storage]` section grants no filesystem access — **even if the Proplet has `PROPLET_DIRS` set**, because a policy replaces the Proplet-wide preopens for that task.
+
+`policy-none.toml`:
+
+```toml
+version = "0.0.1"
+```
+
+```bash
+propeller-cli tasks stop "$TASK_ID"
+
+propeller-cli tasks update "$TASK_ID" --wasi-security ./policy-none.toml
+propeller-cli tasks start "$TASK_ID"
+
+propeller-cli tasks results "$TASK_ID"
+# or
+curl -sS "http://localhost:7070/tasks/$TASK_ID/results" | jq -r '.results'
+```
+
+```text
+file-writer: WASI filesystem check
+  DENIED   write /data/report.txt -> NotFound: No such file or directory (os error 44)
+  DENIED   read  /data/report.txt -> NotFound: No such file or directory (os error 44)
+  DENIED   list  /data -> NotFound: No such file or directory (os error 44)
+```
+
+A path outside every preopen does not exist as far as the guest is concerned.
+
+## A wider probe
+
+To see read-only, read-write and unreachable paths in one run, create a new crate named `fs-probe`:
+
+```rust
+use std::fs;
+use std::io::Write;
+
+fn main() {
+    println!("fs-probe: what can this guest reach?");
+
+    // Read-only mount from the policy.
+    report("read  /models/weights.txt", read_file("/models/weights.txt"));
+    report("write /models/tampered.txt", write_file("/models/tampered.txt"));
+
+    // Read-write mount from the policy.
+    report("write /data/report.txt", write_file("/data/report.txt"));
+    report("read  /data/report.txt", read_file("/data/report.txt"));
+
+    // Never granted by any policy below: the host filesystem is not reachable.
+    report("read  /etc/passwd", read_file("/etc/passwd"));
+    report("list  /", list_dir("/"));
+}
+
+fn write_file(path: &str) -> std::io::Result<String> {
+    let body = "written by the guest\n";
+    let mut file = fs::File::create(path)?;
+    file.write_all(body.as_bytes())?;
+
+    Ok(format!("{} bytes", body.len()))
+}
+
+fn read_file(path: &str) -> std::io::Result<String> {
+    let body = fs::read_to_string(path)?;
+
+    Ok(format!("{:?}", body.trim_end()))
+}
+
+fn list_dir(path: &str) -> std::io::Result<String> {
+    let mut names: Vec<String> = fs::read_dir(path)?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+
+    Ok(names.join(", "))
+}
+
+fn report(label: &str, outcome: std::io::Result<String>) {
+    match outcome {
+        Ok(detail) => println!("  ALLOWED  {label} -> {detail}"),
+        Err(err) => println!("  DENIED   {label} -> {:?}: {err}", err.kind()),
+    }
+}
+```
+
+`policy-probe.toml`:
+
+```toml
+version = "0.0.1"
+
+[storage]
+readonly = ["/tmp/propeller-demo/models::/models"]
+mount = ["/tmp/propeller-demo/data::/data"]
+```
+
+```text
+fs-probe: what can this guest reach?
+  ALLOWED  read  /models/weights.txt -> "v1 model weights"
+  DENIED   write /models/tampered.txt -> PermissionDenied: Operation not permitted (os error 63)
+  ALLOWED  write /data/report.txt -> 21 bytes
+  ALLOWED  read  /data/report.txt -> "written by the guest"
+  DENIED   read  /etc/passwd -> NotFound: No such file or directory (os error 44)
+  DENIED   list  / -> NotFound: No such file or directory (os error 44)
+```
+
+| Guest path | Policy entry                                   | Read | Write |
+| ---------- | ---------------------------------------------- | ---- | ----- |
+| `/models`  | `readonly = ["/tmp/propeller-demo/models::…"]` | yes  | no    |
+| `/data`    | `mount = ["/tmp/propeller-demo/data::…"]`      | yes  | yes   |
+| `/etc`     | —                                              | no   | no    |
+| `/`        | —                                              | no   | no    |
+
+## The same flow with `curl`
+
+The policy is a TOML document carried as a **JSON string**, so build the request body with `jq --rawfile` rather than escaping newlines by hand:
+
+```bash
+export MANAGER=http://localhost:7070
+
+TASK_ID=$(curl -sS -X POST "$MANAGER/tasks" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --rawfile policy ./policy-probe.toml \
+        '{name: "_start", metadata: {elastic: {wasi_security: $policy}}}')" \
+  | jq -r '.id')
+
+echo "$TASK_ID"
+```
+
+Upload the binary and start the task:
+
+```bash
+curl -sS -X PUT "$MANAGER/tasks/$TASK_ID/upload" \
+  -F "file=@./target/wasm32-wasip2/release/fs-probe.wasm"
+
+curl -sS -X POST "$MANAGER/tasks/$TASK_ID/start"
+```
+
+```json
+{ "started": true }
+```
+
+Read the output back:
+
+```bash
+curl -sS "$MANAGER/tasks/$TASK_ID" | jq -r '.results'
+```
+
+```text
+fs-probe: what can this guest reach?
+  ALLOWED  read  /models/weights.txt -> "v1 model weights"
+  DENIED   write /models/tampered.txt -> PermissionDenied: Operation not permitted (os error 63)
+  ALLOWED  write /data/report.txt -> 21 bytes
+  ALLOWED  read  /data/report.txt -> "written by the guest"
+  DENIED   read  /etc/passwd -> NotFound: No such file or directory (os error 44)
+  DENIED   list  / -> NotFound: No such file or directory (os error 44)
+```
+
+Read the stored policy back as TOML:
+
+```bash
+curl -sS "$MANAGER/tasks/$TASK_ID" | jq -r '.metadata.elastic.wasi_security'
+```
+
+Swap the policy on an existing task with `PUT /tasks/{TASK_ID}`. `metadata` is replaced as a whole, so send every key you want to keep:
+
+```bash
+curl -sS -X PUT "$MANAGER/tasks/$TASK_ID" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --rawfile policy ./policy-ro.toml \
+        '{metadata: {elastic: {wasi_security: $policy}}}')"
+```
+
+
+## Troubleshooting
+
+| Symptom                                                                              | Cause                                                                                     |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Task fails with `failed to preopen read-only '.../models' as '/models'`                 | The host directory does not exist or the Proplet cannot open it. In Docker, bind-mount it.   |
+| Task fails with `invalid wasi_security policy: ...`                                     | The TOML does not parse, or a network rule is not a valid `ip:port`. |
+| `400 Bad Request: metadata.elastic.wasi_security must be a string`                    | The policy was sent as a nested object instead of a TOML string.                             |
+| Everything is `NotFound`                                                              | The policy has no `[storage]` entries — a policy replaces `PROPLET_DIRS` entirely.           |
+| The policy appears to have no effect                                                  | The Proplet is likely using an external runtime. Unset `PROPLET_EXTERNAL_WASM_RUNTIME`.             |
+
+## See also
+
+- [WASI Security Policies](/wasi-security) — the full policy reference.

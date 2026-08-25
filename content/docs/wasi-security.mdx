@@ -1,0 +1,231 @@
+---
+title: WASI Security Policies
+description: Per-task WASI sandbox policies
+---
+
+A Propeller task can carry its own **WASI security policy**: a small TOML document that decides what the Wasm guest is allowed to touch. The policy travels with the task, and the Proplet turns it into the guest's `WasiCtx` when the task starts.
+
+Without a policy a task inherits the Proplet-wide defaults — the directories listed in `PROPLET_DIRS`, and no `wasi:sockets` at all. With a policy, the task gets **only** what the policy grants.
+
+> Policies are enforced by the Proplet's **embedded Wasmtime runtime**. A Proplet configured with an external runtime (`PROPLET_EXTERNAL_WASM_RUNTIME=wasmtime`) shells out to the `wasmtime` CLI and does not apply the policy — see [Limitations](#limitations).
+
+## How a policy reaches the guest
+
+```text
+policy.toml ──(--wasi-security | JSON body)──▶ Manager
+                                                 │  stored at metadata.elastic.wasi_security
+                                                 ▼
+                                     start payload "metadata"
+                                                 │
+                                                 ▼
+                              Proplet ──parse TOML──▶ WasiCtxBuilder ──▶ Wasm guest
+```
+
+1. The policy is stored on the task under the reserved metadata sub-map `metadata.elastic`, as key `wasi_security`. The value is a **TOML document carried as a JSON string**.
+2. Only `metadata.elastic` is forwarded to the Proplet — the rest of `metadata` stays manager-side.
+3. When the task starts, the Manager lifts that sub-map onto the start payload as `metadata`, so the Proplet receives it as `metadata.wasi_security`.
+4. The Proplet parses the TOML **before** it fetches the binary or spawns anything. A malformed policy fails the task immediately, and the parse error is reported back as the task's error.
+
+## What a policy can do
+
+| Key                            | Type            | Effect                                                                                                   |
+| ------------------------------ | --------------- | -------------------------------------------------------------------------------------------------------- |
+| `arguments`                    | array of string | WASI argv handed to the guest. Distinct from the task's `inputs` and `cli_args`.                         |
+| `env`                          | table of string | Extra environment variables. Applied **after** the task's own `env`, so the policy wins on a conflict.   |
+| `storage.readonly`             | array of string | Directories preopened read-only (`DirPerms::READ` / `FilePerms::READ`).                                  |
+| `storage.mount`                | array of string | Directories preopened read-write.                                                                        |
+| `network.bind`                 | array of string | Socket addresses the guest may **bind** (listen on).                                                     |
+| `network.connect`              | array of string | Socket addresses the guest may **connect** to.                                                           |
+| `network.allow_ip_name_lookup` | boolean         | Allow DNS resolution from the guest — the WASI equivalent of POSIX `getaddrinfo()`. Defaults to `false`. |
+
+Every key is optional. An empty policy (`""`) is valid and produces the most restrictive sandbox there is: no preopened directories, no network, no extra env.
+
+Unknown top-level keys are ignored, so a policy may carry its own bookkeeping — the `version` field in the example below is accepted but not currently interpreted.
+
+### Example policy
+
+```toml
+# Example WASI security policy.
+#
+# Pass it to a task with:
+#
+#   propeller-cli tasks create my-task --wasi-security examples/wasi-security/policy.toml
+#
+
+# version of the policy file
+version = "0.0.1"
+
+# WASI argv for the guest. Distinct from the task's `inputs` (function-call arguments) and `cli_args`.
+arguments = ["--verbose"]
+
+# Extra environment variables for the guest. Applied after the task's own env, so these have priority on conflict.
+[env]
+LOG_LEVEL = "debug"
+
+[storage]
+# Entries are `host::guest`; a single path uses the same value for both.
+# When a policy is present these replace the proplet-global preopened_dirs, so the task can only reach what is listed here.
+readonly = ["/srv/models::/models"]
+
+# Mount a host directory into the guest. The guest can read and write to this.
+mount = ["/var/lib/task::/data"]
+
+[network]
+# akin to: guest is allowed to use the getaddrinfo() in POSIX.
+allow_ip_name_lookup = false
+
+# `[tcp://|udp://]<ip>:<port>`.
+# No scheme means both protocols, an unspecified IP (0.0.0.0) matches any host, and port 0 matches any port.
+bind = ["tcp://0.0.0.0:8080"]
+connect = ["tcp://10.0.0.5:5432"]
+```
+
+This file also lives in the Propeller repository at [`examples/wasi-security/policy.toml`](https://github.com/absmach/propeller/blob/main/examples/wasi-security/policy.toml).
+
+### Storage entry syntax
+
+Each entry in `storage.readonly` and `storage.mount` is `host::guest`:
+
+| Entry                                 | Host path       | Guest sees | Permissions |
+| ------------------------------------- | --------------- | ---------- | ----------- |
+| `readonly = ["/srv/models::/models"]` | `/srv/models`   | `/models`  | read-only   |
+| `mount = ["/var/lib/task::/data"]`    | `/var/lib/task` | `/data`    | read-write  |
+| `readonly = ["/shared"]`              | `/shared`       | `/shared`  | read-only   |
+
+A single path with no `::` is mapped one-to-one. This is the same idea as `wasmtime --dir host::guest`, with the read-only/read-write split expressed by which list the entry is in.
+
+Remapping is the point: the guest never has to know the host layout, and two tasks can each see `/data` while writing to different host directories.
+
+### Network rule syntax
+
+A rule is `[tcp://|udp://]<ip>:<port>`:
+
+| Rule                  | Matches                                        |
+| --------------------- | ---------------------------------------------- |
+| `tcp://10.0.0.5:5432` | TCP to exactly `10.0.0.5:5432`                 |
+| `udp://127.0.0.1:53`  | UDP to exactly `127.0.0.1:53`                  |
+| `10.0.0.1:9000`       | TCP **and** UDP to `10.0.0.1:9000` (no scheme) |
+| `0.0.0.0:53`          | Any host, port 53, both protocols              |
+| `tcp://127.0.0.1:0`   | TCP to `127.0.0.1`, any port                   |
+
+Two wildcards are available: an **unspecified IP** (`0.0.0.0`) matches any host, and **port `0`** matches any port. `bind` and `connect` are checked separately — a rule in `bind` never authorises an outbound connection, and vice versa.
+
+A hostname is not a valid rule; rules are socket addresses. If the guest resolves names at runtime, it needs `allow_ip_name_lookup = true` _and_ a `connect` rule covering the resolved addresses.
+
+## Semantics
+
+**Storage is exclusive.** When a task carries a policy, the Proplet-wide `PROPLET_DIRS` preopens are ignored for that task, and only the policy's `readonly`/`mount` entries are preopened. A task with a policy that has no `[storage]` section therefore has **no filesystem access at all**, even if `PROPLET_DIRS` is set.
+
+**A preopen that fails, fails the task.** If a policy names a host directory that does not exist or cannot be opened, the task errors out instead of starting with fewer capabilities than the policy asked for.
+
+**Network is deny-by-default.** Wasmtime rejects every socket address unless a rule permits it, so a task without a policy has no `wasi:sockets` access at all. The rules are **grants**, not restrictions — adding a `[network]` section can only widen what the guest can reach, never narrow it.
+
+**Policy `env` wins.** The task's `env` is applied first, then the policy's, so a policy can override a task-level variable.
+
+**`arguments` is the guest's argv.** In the embedded runtime, the task's `cli_args` are runtime flags (and a port hint for HTTP proxy components); they are not passed to the guest. `arguments` is what the guest sees as its command line.
+
+**Policies apply on every instantiation path.** Core modules, WASI Preview 2 components, components invoked through a custom export, latent (precompiled) tasks and per-request HTTP proxy instances all build their `WasiCtx` through the same policy. For a latent task the policy is validated at precompile time, so a broken policy fails the task up front rather than on every invoke.
+
+## Limitations
+
+- **Core modules get no network.** WASI Preview 1 has no sockets, so `network` rules on a core (non-component) module are ignored with a warning in the Proplet log. `env`, `arguments` and `storage` still apply.
+- **`wasi:http` is not covered.** Outbound `wasi:http` requests do not go through the WASI socket address check, so a policy without a `network` section still permits HTTP egress. Use the Proplet's HTTP settings to control that.
+- **External runtimes ignore the policy.** Only the embedded Wasmtime runtime applies it. With `PROPLET_EXTERNAL_WASM_RUNTIME` set, the task runs under the `wasmtime` CLI with whatever `cli_args` say, and the policy has no effect.
+
+## Supplying a policy with the CLI
+
+`propeller-cli tasks create` and `tasks update` take `--wasi-security <path>`. The CLI reads the file and stores its contents as the policy string:
+
+```bash
+propeller-cli tasks create fs-probe --wasi-security ./policy.toml
+```
+
+Combine it with the other task flags as usual:
+
+```bash
+propeller-cli tasks create fs-probe \
+  --wasi-security ./policy.toml \
+  --env LOG_LEVEL=info \
+  --metadata team=platform,env=production
+```
+
+Read the policy back with `tasks view`:
+
+```bash
+propeller-cli tasks view <task-id>
+```
+
+### Updating a policy
+
+```bash
+propeller-cli tasks update <task-id> --wasi-security ./policy-v2.toml
+```
+
+Two things to know about updates:
+
+- **Other `metadata.elastic` keys are preserved.** The CLI fetches the task first, so updating only `--wasi-security` does not drop a previously set `--wasi-pep` (and vice versa).
+- **The rest of `metadata` is replaced.** The Manager overwrites `metadata` wholesale when the update request carries one, so any free-form labels on the task are dropped unless you pass them again:
+
+  ```bash
+  propeller-cli tasks update <task-id> \
+    --wasi-security ./policy-v2.toml \
+    --metadata team=platform,env=production
+  ```
+
+A running task keeps the policy it started with. Stop and start the task for a new policy to take effect.
+
+## Supplying a policy over the API
+
+The policy is a **string field** in the task JSON, so the TOML has to be embedded as a JSON string:
+
+```json
+{
+  "name": "fs-probe",
+  "metadata": {
+    "elastic": {
+      "wasi_security": "arguments = [\"--verbose\"]\n\n[storage]\nreadonly = [\"/srv/models::/models\"]\n"
+    }
+  }
+}
+```
+
+Escaping a whole TOML file by hand is unpleasant, so build the body with `jq --rawfile`:
+
+```bash
+curl -sS -X POST "http://localhost:7070/tasks" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --rawfile policy ./policy.toml \
+        '{name: "fs-probe", metadata: {elastic: {wasi_security: $policy}}}')"
+```
+
+Update an existing task the same way with `PUT /tasks/{TASK_ID}` — remember that `metadata` is replaced as a whole, so send every key you want to keep:
+
+```bash
+curl -sS -X PUT "http://localhost:7070/tasks/${TASK_ID}" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --rawfile policy ./policy-v2.toml \
+        '{metadata: {elastic: {wasi_security: $policy}}}')"
+```
+
+Read the stored policy back:
+
+```bash
+curl -sS "http://localhost:7070/tasks/${TASK_ID}" | jq -r '.metadata.elastic.wasi_security'
+```
+
+## Errors
+
+Policy problems surface in two places:
+
+| Where       | When                                                                                                    | What you see                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Manager** | On create/update. `metadata.elastic` is not an object, or `wasi_security` is not a string. | `400 Bad Request` — `metadata.elastic.wasi_security must be a string`.                                                                |
+| **Manager** | Serialized `metadata` is larger than 1 MB.                                                              | `400 Bad Request` — `metadata exceeds 1MB limit`.                                                                                     |
+| **Proplet** | On start. The TOML does not parse, or a rule is malformed.                                              | The task fails and its `error` carries the parse error, e.g. `invalid wasi_security policy: invalid socket address 'not-an-address'`. |
+| **Proplet** | On start. A `readonly`/`mount` entry cannot be preopened.                                               | The task fails with `failed to preopen read-only '/srv/models' as '/models': ...`.                                                      |
+
+The Manager only checks the _shape_ of `metadata.elastic` — that the sub-map is an object and its known keys are strings. The TOML itself is validated by the Proplet at start time, so a syntactically invalid policy is accepted by `tasks create` and rejected on `tasks start`.
+
+## See also
+
+- [WASI Security Policy example](/examples/wasi-security) — a Rust workload reading and writing files under a policy.

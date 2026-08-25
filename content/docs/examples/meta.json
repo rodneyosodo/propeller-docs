@@ -10,6 +10,7 @@
     "addition-embedded.mdx",
     "dag.mdx",
     "filesystem.mdx",
+    "wasi-security.mdx",
     "http-client.mdx",
     "http-server.mdx",
     "federated-learning.mdx",
