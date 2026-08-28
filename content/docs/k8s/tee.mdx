@@ -19,6 +19,8 @@ kubectl patch proplet k8s-proplet --type=merge -p '{"spec":{"k8s":{"env":{"kbsUr
 
 > **Note:** This requires real TEE hardware (Intel TDX or AMD SEV-SNP). Without it, the proplet's stub HAL path will be exercised but no real attestation will occur. The proplet logs will show `TDX=false, SEV=false` at startup.
 
+`kbsUri` accepts `https://` for a [TLS-enabled KBS](/tee#enable-tls-on-the-kbs-endpoint). The `PropletSpec` only sets the `PROPLET_KBS_URI`/`PROPLET_AA_CONFIG_PATH` env vars — it doesn't mount files — so the file at `aaConfigPath` (containing `[token_configs.kbs]` with `url` and the inlined `cert` PEM, see [Configure Proplet for TEE mode](/tee#configure-proplet-for-tee-mode)) must already exist in the proplet image or node filesystem before the pod starts.
+
 ## Build the WASM Module
 
 ```bash

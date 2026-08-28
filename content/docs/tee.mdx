@@ -99,6 +99,67 @@ as-1           | 2026-02-17T12:37:34.254421Z  WARN attestation_service::policy_e
 as-1           | 2026-02-17T12:37:34.254588Z  WARN attestation_service::policy_engine::opa: Policy default_gpu already exists, so the default policy will not be written.
 ```
 
+### Enable TLS on the KBS endpoint
+
+The Docker Compose setup above starts KBS with `insecure_http = true` in `kbs/config/docker-compose/kbs-config.toml`, so `http://localhost:8082` is unencrypted — fine for local testing, but not for anything that crosses a network boundary. KBS supports TLS termination natively via the `[http_server]` section; no reverse proxy is required.
+
+Generate a self-signed certificate (replace `localhost` with your KBS hostname for a real deployment, and add its IP/DNS name to `-addext`):
+
+```bash
+openssl req -x509 -newkey rsa:4096 -nodes -days 365 \
+  -keyout kbs/config/docker-compose/tls-key.pem \
+  -out kbs/config/docker-compose/tls-cert.pem \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+`kbs/config/docker-compose` is already bind-mounted into the `kbs` container at `/opt/confidential-containers/kbs/user-keys`, so the new files are visible to KBS without touching `docker-compose.yml`.
+
+Edit `kbs/config/docker-compose/kbs-config.toml` and switch the `[http_server]` section to:
+
+```toml
+[http_server]
+sockets = ["0.0.0.0:8080"]
+insecure_http = false
+private_key = "/opt/confidential-containers/kbs/user-keys/tls-key.pem"
+certificate = "/opt/confidential-containers/kbs/user-keys/tls-cert.pem"
+tls_profile = "intermediate"
+```
+
+`tls_profile` defaults to `intermediate` (TLS 1.2 + 1.3, balanced compatibility) and can be omitted. Use `modern` to require TLS 1.3 only, or `custom` with `tls_min_version` / `tls_max_version` / `tls_ciphers` / `tls_groups` for full control, including post-quantum key exchange groups. See the [KBS TLS configuration reference](https://github.com/confidential-containers/trustee/blob/main/kbs/docs/config.md#tls-configuration) for every profile and option.
+
+Recreate the `kbs` container to pick up the config change:
+
+```bash
+docker compose up -d --force-recreate kbs
+```
+
+Verify the endpoint answers over TLS:
+
+```bash
+curl --cacert kbs/config/docker-compose/tls-cert.pem https://localhost:8082/kbs/v0/resource-policy
+```
+
+A `401`/`403` JSON error (instead of a connection or certificate error) confirms KBS is terminating TLS — you're reaching the server, just without valid credentials for that endpoint yet.
+
+With TLS enabled, every KBS client needs to trust `tls-cert.pem` (or its issuing CA for a real deployment):
+
+- **`kbs-client`** — pass `--cert-file` and use `https://` in `--url`:
+
+  ```bash
+  ./target/release/kbs-client \
+    --url https://localhost:8082 \
+    --cert-file kbs/config/docker-compose/tls-cert.pem \
+    config \
+    set-resource \
+    --resource-file private_key \
+    --path default/key/propeller-addition
+  ```
+
+- **Attestation Agent / Proplet** (in-guest, used both for the AA's own attestation flow and for Proplet's `image-rs`-based decryption) — set `cert` under `[token_configs.kbs]` in the AA config to the certificate's **PEM content** (not a file path). See [Configure Proplet for TEE mode](#configure-proplet-for-tee-mode) below.
+
+> The `coco_keyprovider` container used later to encrypt images only _embeds_ the `kbs:///...` resource URI as an annotation — it does not contact KBS over the network during encryption, so no cert is needed for that step even with TLS enabled.
+
 ### Generate an encryption key
 
 This key encrypts the WASM image and is stored in KBS.
@@ -299,14 +360,17 @@ Set the required variables before running the script:
 
 Optional variables:
 
-| Variable               | Description                                           | Default                |
-| ---------------------- | ----------------------------------------------------- | ---------------------- |
-| `PROPLET_MQTT_ADDRESS` | MQTT broker address                                   | `tcp://localhost:1883` |
-| `KBS_URL`              | Key Broker Service URL                                | `http://10.0.2.2:8082` |
-| `ENABLE_CVM`           | CVM mode (`auto`/`tdx`/`sev`/`snp`/`se`/`cca`/`none`) | `auto`                 |
-| `RAM`                  | VM memory                                             | `16384M`               |
-| `CPU`                  | CPU cores                                             | `4`                    |
-| `DISK_SIZE`            | Disk size                                             | `40G`                  |
+| Variable               | Description                                             | Default                |
+| ---------------------- | ------------------------------------------------------- | ---------------------- |
+| `PROPLET_MQTT_ADDRESS` | MQTT broker address                                     | `tcp://localhost:1883` |
+| `KBS_URL`              | Key Broker Service URL                                  | `http://10.0.2.2:8082` |
+| `KBS_CERT_PATH`        | Path to a PEM cert to trust for an `https://` `KBS_URL` | none (unset)           |
+| `ENABLE_CVM`           | CVM mode (`auto`/`tdx`/`sev`/`snp`/`se`/`cca`/`none`)   | `auto`                 |
+| `RAM`                  | VM memory                                               | `16384M`               |
+| `CPU`                  | CPU cores                                               | `4`                    |
+| `DISK_SIZE`            | Disk size                                               | `40G`                  |
+
+Against a [TLS-enabled KBS](/tee#enable-tls-on-the-kbs-endpoint), set `KBS_URL` to `https://...` and `KBS_CERT_PATH` to the certificate file (e.g. `tls-cert.pem` generated earlier). `qemu.sh` embeds its contents as the `cert` field under `[token_configs.kbs]` in the generated `/etc/attestation-agent.conf`, the same field described in [Configure Proplet for TEE mode](#configure-proplet-for-tee-mode) — no manual edits needed after boot.
 
 ### Choose a CVM mode
 
@@ -359,6 +423,9 @@ export PROPLET_API_KEY=your-api-key
 export PROPLET_CHANNEL_ID=your-channel-id
 export PROPLET_MQTT_ADDRESS="tcp://10.0.2.2:1883"
 export KBS_URL="http://10.0.2.2:8082"
+# For a TLS-enabled KBS instead:
+# export KBS_URL="https://10.0.2.2:8082"
+# export KBS_CERT_PATH="/path/to/tls-cert.pem"
 ./qemu.sh
 ```
 
@@ -543,9 +610,35 @@ level = "info"
 
 The `[token_configs.kbs]` section configures the KBS connection:
 
-- `url` — KBS endpoint URL
-- `cert` (optional) — PEM certificate for TLS connections to KBS
+- `url` — KBS endpoint URL. Use `https://` once KBS has [TLS enabled](/tee#enable-tls-on-the-kbs-endpoint).
+- `cert` (optional) — the KBS TLS certificate's **PEM content**, inlined directly in the TOML file with triple-quoted strings (not a file path). Required when `url` is `https://` and the certificate isn't already trusted by the guest's system CA store, e.g. a self-signed cert.
 - `tee_key_algorithm` (optional) — key exchange algorithm, defaults to `ECDH-ES+A256KW-P256`
+
+This same file also backs Proplet's `image-rs`-based decryption path in TEE mode (via `PROPLET_AA_CONFIG_PATH`), so `cert` only needs to be set once here — it doesn't need to be configured separately for encryption/decryption.
+
+With TLS enabled on KBS, the config looks like this:
+
+```toml
+[token_configs]
+
+[token_configs.kbs]
+url = "https://10.0.2.2:8082"
+cert = '''
+-----BEGIN CERTIFICATE-----
+MIIDljCCAn6gAwIBAgIUR/UNh13GFam4emgludtype/S9BIwDQYJKoZIhvcNAQEL
+...
+-----END CERTIFICATE-----
+'''
+
+[eventlog_config]
+init_pcr = 17
+enable_eventlog = false
+
+[log]
+level = "info"
+```
+
+Paste the full contents of `tls-cert.pem` (generated in [Enable TLS on the KBS endpoint](/tee#enable-tls-on-the-kbs-endpoint)) between the `'''` markers.
 
 The `[eventlog_config]` section controls event log recording:
 
