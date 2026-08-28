@@ -22,6 +22,7 @@
     "wasi-nn.mdx",
     "tee.mdx",
     "security.mdx",
+    "wasi-security.mdx",
     "migration-to-atom.mdx",
     "reference.mdx",
     "---Kubernetes---",
