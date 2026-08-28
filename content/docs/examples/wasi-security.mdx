@@ -388,17 +388,6 @@ curl -sS -X PUT "$MANAGER/tasks/$TASK_ID" \
         '{metadata: {elastic: {wasi_security: $policy}}}')"
 ```
 
-
-## Troubleshooting
-
-| Symptom                                                                              | Cause                                                                                     |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| Task fails with `failed to preopen read-only '.../models' as '/models'`                 | The host directory does not exist or the Proplet cannot open it. In Docker, bind-mount it.   |
-| Task fails with `invalid wasi_security policy: ...`                                     | The TOML does not parse, or a network rule is not a valid `ip:port`. |
-| `400 Bad Request: metadata.elastic.wasi_security must be a string`                    | The policy was sent as a nested object instead of a TOML string.                             |
-| Everything is `NotFound`                                                              | The policy has no `[storage]` entries — a policy replaces `PROPLET_DIRS` entirely.           |
-| The policy appears to have no effect                                                  | The Proplet is likely using an external runtime. Unset `PROPLET_EXTERNAL_WASM_RUNTIME`.             |
-
 ## See also
 
 - [WASI Security Policies](/wasi-security) — the full policy reference.
