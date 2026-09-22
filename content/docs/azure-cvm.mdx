@@ -21,6 +21,17 @@ The same guide lives in the repository at [`hal/azure/README.md`](https://github
 | Proplet                                 | CVM          | Pulls and runs the encrypted workload                        |
 | Wasmtime                                | CVM          | Executes the decrypted WASM                                  |
 
+### Where to run Trustee
+
+Trustee runs on a **separate Azure VM you control** — the _Trustee host_ — never inside the CVM and never on the Azure hypervisor. The whole point of a CVM is that the machine hosting it (and its operator) is untrusted, so the component that verifies evidence and releases decryption keys must be its own trust domain. Put the Trustee host in the same virtual network as the CVM and have the CVM reach KBS over the private network; do not expose KBS publicly.
+
+| Placement                                                 | Correct?                                   |
+| --------------------------------------------------------- | ------------------------------------------ |
+| A separate Azure VM in the same vNet (private IP)         | Yes                                        |
+| Any machine or server you control, reachable from the CVM | Yes                                        |
+| Inside the CVM                                            | No — the keys would live with the workload |
+| The CVM's Azure host / hypervisor                         | No — you do not control it                 |
+
 ## Prerequisites
 
 - **Trustee host** — a plain Azure VM. Docker and Docker Compose installed. No confidential SKU needed; it is the relying party, not the workload.
@@ -171,6 +182,13 @@ tls_profile = "intermediate"
 ```bash
 docker compose up -d
 docker compose ps
+```
+
+Verify KBS answers on the private IP — never `0.0.0.0`, which is a bind address, not a connect address:
+
+```bash
+curl -s -o /dev/null -w 'http=%{http_code}\n' http://${TRUSTEE_HOST}:8082/kbs/v0/resource-policy
+# expect http=401 — a JSON auth error, not a connection error
 ```
 
 ### Point KBS at the Attestation Service token CA
@@ -434,11 +452,28 @@ sudo systemctl enable --now attestation-agent coco-keyprovider proplet
 
 > `proplet.service` has `Requires=coco-keyprovider.service`, so stopping the keyprovider also stops proplet — restart both together.
 
+Watch the services while a workload runs. A successful proplet start logs `TEE runtime initialized successfully`; when a task runs, the keyprovider logs an RCAR handshake and the AS logs `Verifier/endorsement check passed. tee=AzSnpVtpm`:
+
+```bash
+sudo journalctl -u attestation-agent -f
+sudo journalctl -u coco-keyprovider -f
+sudo journalctl -u proplet -f
+```
+
 ## Encrypt and publish a WASM image
 
 These commands run on the Trustee host. Encrypt with the same key you uploaded to KBS:
 
 ```bash
+wget https://github.com/tinygo-org/tinygo/releases/download/v0.42.0/tinygo_0.42.0_amd64.deb
+sudo dpkg -i tinygo_0.42.0_amd64.deb
+rm -f tinygo_0.42.0_amd64.deb
+
+wget https://github.com/engineerd/wasm-to-oci/releases/download/v0.1.2/linux-amd64-wasm-to-oci
+sudo mv linux-amd64-wasm-to-oci /usr/local/bin/wasm-to-oci
+sudo chmod +x /usr/local/bin/wasm-to-oci
+
+# Build a sample WASM (from the Propeller repo)
 cd ~/propeller
 GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/addition.wasm -target wasi examples/addition/addition.go
 
@@ -460,6 +495,8 @@ skopeo copy dir:$(pwd)/output docker://<you>/tee-wasm-addition:encrypted
 ```
 
 `skopeo copy` pushes directly. Do not follow it with `docker push docker://...` — `docker push` rejects the scheme with `invalid reference format`.
+
+`Copying blob ... skipped: already exists` during the copy is normal — the plaintext layer is already in the registry from the `wasm-to-oci push`, and only the encrypted layer needs uploading. If `skopeo copy` prints `Writing manifest to image destination`, the push succeeded.
 
 ## Run an encrypted workload
 
@@ -497,7 +534,44 @@ sleep 15
 curl -s "http://localhost:7070/tasks/$TID" | jq '{state, results, error}'
 ```
 
+If the task shows `no active proplets available` when started, proplet is not connected — check `systemctl is-active proplet` first.
+
 `state: 3` with `results: "30\n"` is success — `10 + 20`, decrypted and executed inside the CVM. The whole chain worked: the AA produced vTPM evidence, the AS verified it (`Verifier/endorsement check passed. tee=AzSnpVtpm`), KBS released the key, CoCo Keyprovider unwrapped it, and `image-rs` decrypted the layer.
+
+## Test the HAL interfaces directly
+
+This is independent of Trustee and only exercises the WASM-facing HAL providers. It is useful to confirm the non-TEE interfaces work inside the CVM.
+
+```bash
+cd ~/propeller
+rustup target add wasm32-wasip2
+make hal-runner hal-test attestation-test
+
+./build/hal-runner ./build/hal-test.wasm
+```
+
+Expected:
+
+```text
+platform-info: type=AmdSev version=0.1.0
+list-capabilities: 5 entries
+random(32): <64 hex chars>
+system-time: <seconds>s <nanoseconds>ns
+sha256(hello)=2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+generate-keypair: ok (pub=<n>B priv=<n>B)
+```
+
+```bash
+./build/hal-runner ./build/attestation-test.wasm --function run-attestation
+```
+
+Expected, with a wasmhal build that includes the fix:
+
+```text
+platform-info: type=AmdSev version=0.1.0
+attestation: ok (evidence len=12316)
+evidence: 7b2276657273696f6e223a312c2274706d5f71756f7465223a...
+```
 
 ## Cleanup
 
