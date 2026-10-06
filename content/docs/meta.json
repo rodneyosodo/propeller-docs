@@ -16,6 +16,8 @@
     "plugins.mdx",
     "hal.mdx",
     "azure-cvm.mdx",
+    "gcp-cvm.mdx",
+    "gcp-sev-cvm.mdx",
     "hal-directory-binding.mdx",
     "proplet-sdf.mdx",
     "task-scheduling.mdx",
