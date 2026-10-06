@@ -14,7 +14,7 @@ Before starting, ensure you have the following installed and configured:
 ### Required Software
 
 - **Docker** and **Docker Compose** (v2.x or later)
-- **Go** 1.26.0 or later (for building WASM)
+- **Go** 1.27.0 or later (for building WASM)
 - **Python 3** with pip (for provisioning script)
 - **jq** (for JSON formatting in terminal)
 - **curl** (for API requests)
@@ -113,13 +113,13 @@ Your output should look like this:
  => => transferring dockerfile: 1.45kB                                           0.0s
  => [coordinator-http internal] load build definition from Dockerfile            0.0s
  => => transferring dockerfile: 892B                                             0.0s
- => [manager internal] load metadata for docker.io/library/golang:1.26-bookworm    1.2s
+ => [manager internal] load metadata for docker.io/library/golang:1.27-bookworm    1.2s
  => [proplet internal] load metadata for docker.io/library/rust:1.94.0          1.3s
- => [coordinator-http internal] load metadata for docker.io/library/golang:1.26-alpine  1.1s
+ => [coordinator-http internal] load metadata for docker.io/library/golang:1.27-alpine  1.1s
  => [manager internal] load .dockerignore                                        0.0s
  => [proplet internal] load .dockerignore                                        0.0s
  => [coordinator-http internal] load .dockerignore                               0.0s
- => [manager builder 1/4] FROM docker.io/library/golang:1.26-bookworm@sha256:...   0.0s
+ => [manager builder 1/4] FROM docker.io/library/golang:1.27-bookworm@sha256:...   0.0s
  => [manager internal] load build context                                        0.1s
  => => transferring context: 2.34MB                                              0.1s
  => CACHED [manager builder 2/4] WORKDIR /go/src/github.com/absmach/propeller   0.0s
@@ -130,7 +130,7 @@ Your output should look like this:
  => => transferring context: 1.89MB                                              0.1s
  => CACHED [proplet builder 2/3] WORKDIR /build                                  0.0s
  => [proplet builder 3/3] RUN apt-get install ... && cargo build --release ...  82.4s
- => [coordinator-http builder 1/5] FROM docker.io/library/golang:1.26-alpine@sha256:...  0.0s
+ => [coordinator-http builder 1/5] FROM docker.io/library/golang:1.27-alpine@sha256:...  0.0s
  => [coordinator-http internal] load build context                               0.1s
  => CACHED [coordinator-http builder 2/5] WORKDIR /app                          0.0s
  => CACHED [coordinator-http builder 3/5] COPY go.mod go.sum* ./                0.0s
