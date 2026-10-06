@@ -7,7 +7,7 @@ description: "Deploy Trustee outside an AMD SEV-SNP Azure CVM and run Propeller'
 
 That split is the point. A CVM's threat model distrusts the machine hosting it, so the component that verifies evidence and releases decryption keys must live in its own trust domain. KBS inside the CVM would hand the workload the keys it is only supposed to receive _after_ attestation.
 
-The same guide lives in the repository at [`hal/azure/README.md`](https://github.com/absmach/propeller/blob/main/hal/azure/README.md).
+The same guide lives in the repository at [`hal/azure-sev/README.md`](https://github.com/absmach/propeller/blob/main/hal/azure-sev/README.md).
 
 ## Architecture
 
@@ -585,5 +585,7 @@ az group delete --name propeller-hal-rg --yes --no-wait
 - [Encrypted workloads](/tee) — what runs once the key is released, and Trustee's TLS options
 - [HAL](/hal) — the local QEMU CVM path for hosts with TEE support
 - [Proplet](/proplet) — `PROPLET_TEE_ENABLED`, `PROPLET_KBS_URI`, and the other TEE variables
-- [`hal/azure/README.md`](https://github.com/absmach/propeller/blob/main/hal/azure/README.md) — this guide as plain Markdown
+- [GCP Intel TDX Confidential VMs](/gcp-cvm) — a managed CVM where the hypervisor exposes the TEE device nodes directly
+- [GCP AMD SEV-SNP Confidential VMs](/gcp-sev-cvm) — the same, with AMD SEV-SNP instead of Intel TDX
+- [`hal/azure-sev/README.md`](https://github.com/absmach/propeller/blob/main/hal/azure-sev/README.md) — this guide as plain Markdown
 - [Azure confidential VM guest attestation](https://github.com/Azure/confidential-computing-cvm-guest-attestation) — the Microsoft sample app
